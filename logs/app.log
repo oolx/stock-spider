@@ -1,0 +1,31 @@
+INFO:     Started server process [23991]
+INFO:     Waiting for application startup.
+[2026-11-24 00:04:18] INFO 非交易时段，暂停抓取
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     ('127.0.0.1', 51116) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:51120 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51126 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51138 - "PUT /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51152 - "GET /api/history?id=stock%3A600026&limit=5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36668 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36684 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36686 - "PUT /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36692 - "GET /api/history?id=stock%3A600026&limit=5 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23991]
+INFO:     Started server process [24602]
+INFO:     Waiting for application startup.
+[2026-11-24 00:06:01] INFO 非交易时段，暂停抓取
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     ('127.0.0.1', 55076) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:36236 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36244 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 51312) - "WebSocket /ws" [accepted]
+INFO:     connection open

@@ -1,0 +1,170 @@
+/* ==========================================================================
+   摸鱼秒薪计算器样式
+   - 行情页里作为一张紧凑卡片，放在走势图下方
+   - 也可被 salary_calculation/index.html 单独使用
+   ========================================================================== */
+
+/* 单独打开 index.html 时去掉浏览器默认外边距（行情页本身已设置为 0） */
+body {
+  margin: 0;
+}
+
+.salary-panel {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.16));
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.88));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+  color: var(--text, #e2e8f0);
+}
+
+.salary-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.salary-title h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 三个参数输入：时间两列，日薪占满一行 */
+.salary-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.salary-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted, #94a3b8);
+  font-size: 11px;
+}
+
+.salary-form label:last-child {
+  grid-column: 1 / -1;
+}
+
+.salary-form input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.16));
+  border-radius: 7px;
+  outline: none;
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--text, #e2e8f0);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-form input:focus {
+  border-color: #38bdf8;
+}
+
+/* 主数字 + 进度条 */
+.salary-body {
+  margin-top: 12px;
+}
+
+.salary-main {
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.16));
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.salary-label {
+  color: var(--muted, #94a3b8);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.salary-earned {
+  display: block;
+  margin: 4px 0 10px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(90deg, #38bdf8, #a78bfa 60%, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 工资 + 投资收益的拆分 */
+.salary-breakdown {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -2px 0 8px;
+  color: var(--muted, #94a3b8);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-breakdown[hidden] {
+  display: none;
+}
+
+.salary-breakdown b {
+  color: var(--text, #e2e8f0);
+  font-weight: 600;
+}
+
+.salary-breakdown b.up {
+  color: #f87171;
+}
+
+.salary-breakdown b.down {
+  color: #4ade80;
+}
+
+.salary-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  overflow: hidden;
+}
+
+.salary-progress i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #a78bfa);
+  transition: width 0.2s linear;
+}
+
+.salary-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-top: 8px;
+  color: var(--muted, #94a3b8);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 单独打开时的页面样式 */
+.salary-standalone {
+  min-height: 100vh;
+  padding: 16px;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(168, 85, 247, 0.10), transparent 55%),
+    #0b1220;
+  color: #e2e8f0;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+}
+
+.salary-standalone .salary-panel {
+  max-width: 420px;
+  margin: 0 auto;
+}

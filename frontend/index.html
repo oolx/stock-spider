@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A股实时行情</title>
+  <link rel="stylesheet" href="style.css?v=2">
+  <!-- 摸鱼秒薪计算器：样式与逻辑都在 salary_calculation 目录，由后端静态托管 -->
+  <link rel="stylesheet" href="/salary_calculation/style.css?v=2">
+  <!-- 本地静态依赖，无需 npm / 构建工具 -->
+  <script src="vendor/vue.global.prod.js"></script>
+  <script src="vendor/echarts.min.js"></script>
+</head>
+<body>
+<div id="app" v-cloak>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <div>
+        <h1>A股实时行情</h1>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="status" :class="status">
+        <span class="status-dot"></span>
+        <span>{{ statusText }}</span>
+      </div>
+      <button class="settings-btn" @click="toggleSettings">
+        {{ settingsOpen ? '收起设置' : '标的设置' }}
+      </button>
+    </div>
+  </header>
+
+  <section class="settings" v-if="settingsOpen">
+    <div class="settings-head">
+      <h3>标的设置</h3>
+      <span class="hint">指数支持 399001 / 000001 / 399006 / 000300；股票/ETF 支持 0/1/3/5/6 开头代码，可填持仓价与股数统计投资收益</span>
+    </div>
+
+    <div class="symbol-row" v-for="(item, index) in draft" :key="index">
+      <select v-model="item.kind">
+        <option value="index">指数</option>
+        <option value="stock">股票/ETF</option>
+      </select>
+      <input class="code-input" v-model.trim="item.symbol" maxlength="6" inputmode="numeric" placeholder="6 位代码">
+      <button class="ghost danger" @click="removeDraft(index)">删除</button>
+      <input class="name-input" v-model.trim="item.name" placeholder="名称（留空自动获取）">
+      <div class="holding-row" v-if="item.kind === 'stock'">
+        <label>持仓价<input type="number" v-model.number="item.cost" min="0" step="0.001" placeholder="未填写"></label>
+        <label>股数<input type="number" v-model.number="item.shares" min="0" step="1" placeholder="未填写"></label>
+      </div>
+    </div>
+
+    <div class="settings-actions">
+      <button class="ghost" @click="addDraft('index')">+ 添加指数</button>
+      <button class="ghost" @click="addDraft('stock')">+ 添加股票</button>
+      <span class="hint error" v-if="saveMessage">{{ saveMessage }}</span>
+      <button class="primary" :disabled="saving" @click="saveSymbols">
+        {{ saving ? '保存中…' : '保存并应用' }}
+      </button>
+    </div>
+  </section>
+
+  <main class="dashboard">
+    <section class="chart-panel">
+      <div class="panel-head">
+        <div>
+          <h2>实时行情走势</h2>
+        </div>
+        <div class="chips" v-if="cards.length">
+          <span class="chip" v-for="card in cards" :key="card.id">
+            <i class="chip-dot" :class="card.kind"></i>
+            <span class="chip-name">{{ card.name }}</span>
+            <b :class="trendClass(card)">{{ formatPrice(card) }}</b>
+            <em :class="trendClass(card)">{{ formatPct(card) }}</em>
+          </span>
+        </div>
+      </div>
+
+      <div id="main-chart" class="chart-single"></div>
+    </section>
+
+    <section class="empty" v-if="error">{{ error }}</section>
+    <section class="empty" v-else-if="!cards.length">暂无标的，请点击右上角「标的设置」添加</section>
+
+    <!-- 摸鱼秒薪计算器：内容由 /salary_calculation/app.js 渲染 -->
+    <section class="salary-panel" id="salary-calculator"></section>
+  </main>
+</div>
+
+<script src="app.js?v=2"></script>
+<script src="/salary_calculation/app.js?v=2"></script>
+</body>
+</html>
