@@ -21,6 +21,91 @@ const MAX_POINTS = 500;
 const RETRY_BASE = 1000;
 const RETRY_MAX = 15000;
 const ALLOWED_INDEX = ['399001', '000001', '399006', '000300'];
+const WEEKDAY_CN = ['日', '一', '二', '三', '四', '五', '六'];
+
+function parseDay(value) {
+  return new Date(`${value}T00:00:00`);
+}
+
+function todayString() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function calendarLabel(item) {
+  if (item.type === 'holiday') return item.name || '假';
+  if (item.type === 'rest') return '休';
+  return item.name ? '班' : '';
+}
+
+/* ---------------- 交易时间压缩 ----------------
+ * 后端只在交易时段抓取数据，午休（11:30–13:00）、隔夜、周末都没有数据。
+ * 如果直接用真实时间做横轴，ECharts 会把 11:30 和 13:00 两个点连起来，
+ * 画出一条并不存在的“直线”。这里把时间映射成“累计交易分钟数”：
+ * 只统计真实交易过的时间，非交易时段被折叠掉，折线自然衔接。
+ */
+const TRADING_SESSIONS = [[570, 690], [780, 930]]; // 09:30-11:30、13:00-15:30
+const SESSION_MINUTES = TRADING_SESSIONS.reduce((sum, [start, end]) => sum + (end - start), 0);
+
+/** 某个时刻在当天已经走过的交易分钟数（盘前/午休/盘后自动停在边界） */
+function tradingMinutesOfDay(date) {
+  const minutes = date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
+  let passed = 0;
+  for (let i = 0; i < TRADING_SESSIONS.length; i += 1) {
+    const start = TRADING_SESSIONS[i][0];
+    const end = TRADING_SESSIONS[i][1];
+    if (minutes < start) return passed;
+    if (minutes <= end) return passed + (minutes - start);
+    passed += end - start;
+  }
+  return passed;
+}
+
+/** 1970-01-01（周四）以来的交易日序号（只剔除周六日），使跨天不留空隙 */
+function tradingDayIndex(date) {
+  const days = Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
+  const weeks = Math.floor(days / 7);
+  let count = weeks * 5;
+  for (let i = 0; i < days % 7; i += 1) {
+    const weekday = (4 + i) % 7;
+    if (weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
+}
+
+/** 时间戳 -> 压缩后的横轴值（分钟） */
+function compressTime(ts) {
+  const date = new Date(Number(ts));
+  return tradingDayIndex(date) * SESSION_MINUTES + tradingMinutesOfDay(date);
+}
+
+/** 分钟数 -> "HH:MM" */
+function formatClock(minutes) {
+  const total = Math.round(minutes);
+  const hour = Math.floor(total / 60);
+  const minute = total % 60;
+  return (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
+}
+
+/** 压缩后的横轴值 -> 真实时钟，用于坐标轴刻度和指示线 */
+function clockLabel(minutes) {
+  let rest = Number(minutes) % SESSION_MINUTES;
+  if (rest < 0) rest += SESSION_MINUTES;
+  for (let i = 0; i < TRADING_SESSIONS.length; i += 1) {
+    const start = TRADING_SESSIONS[i][0];
+    const end = TRADING_SESSIONS[i][1];
+    if (rest <= end - start) return formatClock(start + rest);
+    rest -= end - start;
+  }
+  return formatClock(TRADING_SESSIONS[TRADING_SESSIONS.length - 1][1]);
+}
+
+/** 把 [ts, price] 原始缓冲转换为图表数据，同时保留原始时间供 tooltip 使用 */
+function toSeriesData(points) {
+  return points.map(point => ({ value: [compressTime(point[0]), point[1]], ts: point[0] }));
+}
 
 createApp({
   setup() {
@@ -33,6 +118,83 @@ createApp({
     const draft = reactive([]);
     const saving = ref(false);
     const saveMessage = ref('');
+
+    // 翻页：0 = 行情页，1 = 日历页
+    const page = ref(0);
+
+    // 日历
+    const calYear = ref(new Date().getFullYear());
+    const calMonth = ref(new Date().getMonth() + 1);
+    const calDays = ref([]);
+    // 当月每个工作日的收入：{ date: { salary, invest } }
+    const calSummary = ref({});
+    const calendarLoaded = ref(false);
+    const calLoading = ref(false);
+    const calError = ref('');
+
+    // 某一天的收入明细
+    const dayOpen = ref(false);
+    const dayDate = ref('');
+    const dayType = ref('work');
+    const dayName = ref('');
+    const dayDraft = reactive([]);
+    const daySalary = ref(0);
+    const dayInvest = ref(0);
+    const dayLoading = ref(false);
+    const daySaving = ref(false);
+    const dayMessage = ref('');
+    const daySource = ref('none');
+    const daySnapshotDate = ref(null);
+
+    const daySourceNote = computed(() => {
+      if (daySource.value === 'inherited' && daySnapshotDate.value) {
+        return `沿用 ${daySnapshotDate.value} 的持仓设置`;
+      }
+      if (daySource.value === 'none') return '该日之前没有投资记录，默认不投资';
+      return '';
+    });
+
+    const dayTotal = computed(() => Number(daySalary.value) + Number(dayInvest.value));
+    const dayTitle = computed(() => {
+      if (!dayDate.value) return '';
+      const current = parseDay(dayDate.value);
+      return `${dayDate.value} 周${WEEKDAY_CN[current.getDay()]}`;
+    });
+    const daySubtitle = computed(() => {
+      const labels = { work: '工作日', rest: '休息日', holiday: '假期' };
+      return `${labels[dayType.value] || ''}${dayName.value ? ` · ${dayName.value}` : ''}`;
+    });
+
+    // 日历格子：按周一为第一列补齐前置空白
+    const calCells = computed(() => {
+      const cells = [];
+      if (!calDays.value.length) return cells;
+      const first = parseDay(calDays.value[0].date);
+      const offset = (first.getDay() + 6) % 7;
+      for (let i = 0; i < offset; i += 1) {
+        cells.push({ key: `blank-${i}`, day: null });
+      }
+      const today = todayString();
+      calDays.value.forEach(item => {
+        const summary = calSummary.value[item.date] || null;
+        const isWork = item.type === 'work';
+        // 小方块内只显示整数，便于快速浏览；点击后再看精确明细
+        const salaryValue = isWork && summary ? Math.round(Number(summary.salary) || 0) : 0;
+        const investValue = isWork && summary ? Math.round(Number(summary.invest) || 0) : 0;
+        cells.push({
+          ...item,
+          key: item.date,
+          label: calendarLabel(item),
+          isToday: item.date === today,
+          salaryText: salaryValue > 0 ? String(salaryValue) : '',
+          investText: isWork && summary
+            ? (investValue > 0 ? `+${investValue}` : String(investValue))
+            : '',
+          investClass: investValue > 0 ? 'up' : (investValue < 0 ? 'down' : 'flat'),
+        });
+      });
+      return cells;
+    });
 
     // 所有标的共用一个 ECharts 实例
     let chart = null;
@@ -52,7 +214,7 @@ createApp({
     function axisStyle() {
       return {
         axisLine: { lineStyle: { color: '#334155' } },
-        axisLabel: { color: '#94a3b8' },
+        axisLabel: { color: '#94a3b8', fontSize: 9 },
         splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
       };
     }
@@ -65,20 +227,25 @@ createApp({
         animation: false,
         color: ['#38bdf8', '#fbbf24', '#a78bfa', '#34d399', '#f472b6', '#22d3ee', '#fb923c', '#e879f9'],
         grid: {
-          left: hasIndex ? 52 : 16,
-          right: hasStock ? 46 : 16,
-          top: 12,
-          bottom: 24,
+          left: hasIndex ? 30 : 8,
+          right: hasStock ? 26 : 8,
+          top: 4,
+          bottom: 16,
         },
         tooltip: {
           trigger: 'axis',
-          axisPointer: { type: 'cross', label: { backgroundColor: '#334155' } },
+          axisPointer: {
+            type: 'cross',
+            label: { backgroundColor: '#334155' },
+          },
           backgroundColor: 'rgba(17, 24, 39, 0.94)',
           borderColor: '#334155',
-          textStyle: { color: '#e2e8f0', fontSize: 12 },
+          textStyle: { color: '#e2e8f0', fontSize: 11 },
           formatter(params) {
             if (!params || !params.length) return '';
-            const time = new Date(params[0].value[0]).toLocaleTimeString('zh-CN', { hour12: false });
+            const first = params[0];
+            const ts = (first.data && first.data.ts) || first.value[0];
+            const time = new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
             const lines = params.map(point => (
               `${point.marker}${point.seriesName}：<b>${Number(point.value[1]).toFixed(2)}</b>`
             ));
@@ -86,10 +253,21 @@ createApp({
           },
         },
         xAxis: {
-          type: 'time',
+          // 使用压缩后的“交易分钟”作为数值轴，午休/隔夜/周末不再占位
+          type: 'value',
+          scale: true,
           ...axisStyle(),
           splitLine: { show: false },
-          axisLabel: { color: '#94a3b8', hideOverlap: true },
+          axisLabel: {
+            color: '#94a3b8',
+            fontSize: 9,
+            hideOverlap: true,
+            formatter: value => clockLabel(value),
+          },
+          // 十字准星的 x 轴标签同样还原成时钟
+          axisPointer: {
+            label: { formatter: params => clockLabel(params.value) },
+          },
         },
         // 指数与股票价格量级差异大，分别使用左右两条 Y 轴
         yAxis: [
@@ -116,9 +294,9 @@ createApp({
           yAxisIndex: card.kind === 'index' ? 0 : 1,
           showSymbol: false,
           smooth: false,
-          lineStyle: { width: 1.8 },
+          lineStyle: { width: 1.2 },
           emphasis: { focus: 'series' },
-          data: card.points,
+          data: toSeriesData(card.points),
         })),
       };
     }
@@ -138,9 +316,9 @@ createApp({
 
     function redraw(card) {
       if (!chart) return;
-      // 按 series id 只更新这一条线，实现增量追加
+      // 按 series id 只更新这一条线，实现增量追加（横轴同为压缩后的交易分钟）
       chart.setOption({
-        series: [{ id: card.id, name: card.name, data: card.points }],
+        series: [{ id: card.id, name: card.name, data: toSeriesData(card.points) }],
       }, { lazyUpdate: true });
     }
 
@@ -376,6 +554,214 @@ createApp({
       }
     }
 
+    /* ---------------- 日历页 ---------------- */
+
+    function switchPage(index) {
+      if (index === page.value) return;
+      page.value = index;
+      if (index === 1) {
+        if (!calendarLoaded.value) loadCalendar();
+        return;
+      }
+      // 从日历页切回行情页时，图表在隐藏状态下尺寸为 0，需要重新校正
+      nextTick(() => {
+        initChart();
+        renderChart();
+        requestAnimationFrame(() => chart && chart.resize());
+      });
+    }
+
+    async function loadCalendar() {
+      calLoading.value = true;
+      calError.value = '';
+      try {
+        const response = await fetch(`/api/calendar?year=${calYear.value}&month=${calMonth.value}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || `加载日历失败：HTTP ${response.status}`);
+        calDays.value = payload.days || [];
+        calendarLoaded.value = true;
+        // 方格内的数字依赖历史行情，单独异步加载，不阻塞日历显示
+        loadMonthSummary();
+      } catch (e) {
+        calError.value = e.message || String(e);
+      } finally {
+        calLoading.value = false;
+      }
+    }
+
+    /** 拉取当月工资 + 投资的小数字，填充到日历方格 */
+    async function loadMonthSummary() {
+      try {
+        const response = await fetch(
+          `/api/month-summary?year=${calYear.value}&month=${calMonth.value}`
+        );
+        if (!response.ok) return;
+        const payload = await response.json();
+        const map = {};
+        (payload.days || []).forEach(item => {
+          map[item.date] = item;
+        });
+        calSummary.value = map;
+      } catch (e) {
+        // 数字加载失败不影响日历本身
+      }
+    }
+
+    async function selectDay(cell) {
+      if (!cell || !cell.day || cell.type !== 'work') return;
+      dayDate.value = cell.date;
+      dayType.value = cell.type;
+      dayName.value = cell.name || '';
+      dayOpen.value = true;
+      dayMessage.value = '';
+      daySalary.value = 0;
+      dayInvest.value = 0;
+      dayDraft.splice(0, dayDraft.length);
+
+      dayLoading.value = true;
+      try {
+        const [snapRes, settingsRes] = await Promise.all([
+          fetch(`/api/day-holdings?date=${cell.date}`),
+          fetch('/api/settings'),
+        ]);
+        const snapshot = snapRes.ok ? await snapRes.json() : null;
+        const settings = settingsRes.ok ? await settingsRes.json() : {};
+        daySalary.value = cell.type === 'work' ? (Number(settings.daily) || 0) : 0;
+        if (snapshot) {
+          daySource.value = snapshot.source || 'none';
+          daySnapshotDate.value = snapshot.snapshot_date || null;
+          // 日历页只统计股票/ETF 的持仓收益，指数没有持仓概念，直接忽略
+          dayDraft.splice(0, dayDraft.length, ...(snapshot.items || [])
+            .filter(item => item.kind === 'stock')
+            .map(item => ({
+              kind: 'stock',
+              symbol: item.symbol,
+              name: item.name || '',
+              cost: Number(item.cost) || 0,
+              shares: Number(item.shares) || 0,
+              profit: null,
+            })));
+        }
+      } catch (e) {
+        dayMessage.value = `读取当日设置失败：${e.message || e}`;
+      }
+      await calcDayProfit();
+    }
+
+    async function calcDayProfit() {
+      if (!dayDate.value) return;
+      dayLoading.value = true;
+      const results = await Promise.all(dayDraft.map(async item => {
+        item.profit = null;
+        // 收益 = (当日收盘价 - 设置持仓价) × 股数，两者都填写才算
+        if (!(Number(item.cost) > 0) || !(Number(item.shares) > 0) || !/^\d{6}$/.test(item.symbol)) {
+          item.profit = 0;
+          return 0;
+        }
+        try {
+          const response = await fetch(
+            `/api/daily-quote?kind=stock&symbol=${item.symbol}&date=${dayDate.value}`
+          );
+          const quote = await response.json();
+          const close = Number(quote.close);
+          if (quote.found && Number.isFinite(close)) {
+            item.profit = (close - Number(item.cost)) * Number(item.shares);
+            return item.profit;
+          }
+        } catch (e) {
+          // 单只失败按 0 处理，不阻塞其他标的
+        }
+        item.profit = 0;
+        return 0;
+      }));
+      dayInvest.value = results.reduce((sum, value) => sum + value, 0);
+      dayLoading.value = false;
+    }
+
+    function closeDay() {
+      dayOpen.value = false;
+    }
+
+    function addDayItem() {
+      dayDraft.push({ kind: 'stock', symbol: '', name: '', cost: 0, shares: 0, profit: null });
+    }
+
+    function removeDayItem(index) {
+      dayDraft.splice(index, 1);
+      calcDayProfit();
+    }
+
+    /** 清空当日投资标的（保存后表示从这一天起不投资） */
+    function clearDayItems() {
+      dayDraft.splice(0, dayDraft.length);
+      daySource.value = 'exact';
+      dayMessage.value = '';
+      calcDayProfit();
+    }
+
+    async function saveDay() {
+      dayMessage.value = '';
+      const items = dayDraft.map(item => ({
+        kind: 'stock',
+        symbol: (item.symbol || '').trim(),
+        name: (item.name || '').trim(),
+        cost: Number(item.cost) || 0,
+        shares: Number(item.shares) || 0,
+      }));
+
+      for (const item of items) {
+        if (!/^\d{6}$/.test(item.symbol)) {
+          dayMessage.value = `代码必须是 6 位数字：${item.symbol || '(空)'}`;
+          return;
+        }
+        if (!/^[01356]/.test(item.symbol)) {
+          dayMessage.value = `股票/ETF 代码需以 0/1/3/5/6 开头：${item.symbol}`;
+          return;
+        }
+      }
+
+      daySaving.value = true;
+      try {
+        const response = await fetch('/api/day-holdings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: dayDate.value, items }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          dayMessage.value = payload.detail || `保存失败：HTTP ${response.status}`;
+          return;
+        }
+        dayMessage.value = '已保存，正在按当日价格计算投资收益…';
+        // 保存后重新爬取当日行情，并按「持仓价 / 股数」刷新当日投资收入
+        await calcDayProfit();
+        // 同步刷新日历方格内的数字
+        await loadMonthSummary();
+        dayMessage.value = '已保存';
+      } catch (e) {
+        dayMessage.value = e.message || String(e);
+      } finally {
+        daySaving.value = false;
+      }
+    }
+
+    function money(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(2) : '0.00';
+    }
+
+    function signedMoney(value) {
+      const number = Number(value);
+      return `${number > 0 ? '+' : ''}${money(number)}`;
+    }
+
+    function signClass(value) {
+      const number = Number(value);
+      if (number > 0) return 'up';
+      if (number < 0) return 'down';
+      return 'flat';
+    }
+
     /* ---------------- WebSocket ---------------- */
 
     function scheduleReconnect() {
@@ -489,6 +875,35 @@ createApp({
       formatPrice,
       formatPct,
       trendClass,
+      // 翻页与日历
+      page,
+      switchPage,
+      calYear,
+      calMonth,
+      calCells,
+      calLoading,
+      calError,
+      selectDay,
+      dayOpen,
+      dayTitle,
+      daySubtitle,
+      dayDraft,
+      daySalary,
+      dayInvest,
+      dayTotal,
+      dayLoading,
+      daySaving,
+      dayMessage,
+      daySourceNote,
+      closeDay,
+      addDayItem,
+      removeDayItem,
+      calcDayProfit,
+      clearDayItems,
+      saveDay,
+      money,
+      signedMoney,
+      signClass,
     };
   },
 }).mount('#app');

@@ -52,8 +52,10 @@ echo   关闭此窗口即可停止服务。
 echo ==========================================
 echo.
 
-rem 稍等服务启动后自动打开浏览器
-start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process 'http://%HOST%:%PORT%/'"
+rem 稍等服务启动后，用浏览器 kiosk 模式打开（真全屏，无地址栏、标签页、窗口按钮）
+rem 注意：kiosk 会强制全屏，380x300 尺寸与右下角定位不再生效；退出按 Alt+F4
+rem 优先 Chrome，其次 Edge，最后 fallback 到系统默认浏览器
+start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; $url='http://%HOST%:%PORT%/'; $chrome='C:\Program Files\Google\Chrome\Application\chrome.exe'; $edge='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; if (Test-Path $chrome) { Start-Process $chrome ('--kiosk=' + $url) } elseif (Test-Path $edge) { Start-Process $edge ('--kiosk=' + $url) } else { Start-Process $url }"
 
 "%ENV_PY%" -m uvicorn backend.main:app --host %HOST% --port %PORT%
 

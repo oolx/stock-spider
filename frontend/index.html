@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>A股实时行情</title>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=11">
   <!-- 摸鱼秒薪计算器：样式与逻辑都在 salary_calculation 目录，由后端静态托管 -->
-  <link rel="stylesheet" href="/salary_calculation/style.css?v=2">
+  <link rel="stylesheet" href="/salary_calculation/style.css?v=9">
   <!-- 本地静态依赖，无需 npm / 构建工具 -->
   <script src="vendor/vue.global.prod.js"></script>
   <script src="vendor/echarts.min.js"></script>
@@ -61,7 +61,7 @@
     </div>
   </section>
 
-  <main class="dashboard">
+  <main class="dashboard" v-show="page === 0">
     <section class="chart-panel">
       <div class="panel-head">
         <div>
@@ -86,9 +86,105 @@
     <!-- 摸鱼秒薪计算器：内容由 /salary_calculation/app.js 渲染 -->
     <section class="salary-panel" id="salary-calculator"></section>
   </main>
+
+  <!-- 第二页：日历（工作日 / 休息日 / 假期） -->
+  <section class="calendar-page" v-show="page === 1">
+    <div class="cal-head">
+      <div class="cal-title">{{ calYear }}年{{ calMonth }}月</div>
+    </div>
+    <div class="cal-week">
+      <span v-for="w in ['一','二','三','四','五','六','日']" :key="w">{{ w }}</span>
+    </div>
+    <div class="cal-grid">
+      <button
+        v-for="cell in calCells"
+        :key="cell.key"
+        class="cal-cell"
+        :class="[cell.day ? cell.type : 'empty', { 'is-today': cell.isToday }]"
+        :disabled="!cell.day || cell.type !== 'work'"
+        @click="selectDay(cell)"
+      >
+        <span class="cal-day" v-if="cell.day">{{ cell.day }}</span>
+        <span class="cal-tag" v-if="cell.day && cell.label">{{ cell.label }}</span>
+        <span class="cal-salary" v-if="cell.salaryText">{{ cell.salaryText }}</span>
+        <span class="cal-invest" :class="cell.investClass" v-if="cell.investText">{{ cell.investText }}</span>
+      </button>
+    </div>
+    <div class="cal-legend">
+      <span><i class="dot work"></i>工作日</span>
+      <span><i class="dot rest"></i>休息日</span>
+      <span><i class="dot holiday"></i>假期</span>
+    </div>
+    <div class="cal-hint" v-if="calLoading">加载中…</div>
+    <div class="cal-hint error" v-else-if="calError">{{ calError }}</div>
+    <div class="cal-hint" v-else>点击工作日看详情</div>
+  </section>
+
+  <!-- 底部左右翻页圆点 -->
+  <nav class="pager">
+    <button class="pager-dot" :class="{ active: page === 0 }" @click="switchPage(0)" title="行情页"></button>
+    <button class="pager-dot" :class="{ active: page === 1 }" @click="switchPage(1)" title="日历页"></button>
+  </nav>
+
+  <!-- 某一天的收入明细（覆盖层） -->
+  <div class="day-modal" v-if="dayOpen" @click.self="closeDay">
+    <div class="day-panel">
+      <div class="day-head">
+        <div>
+          <h3>{{ dayTitle }}</h3>
+          <span class="hint">{{ daySubtitle }}</span>
+        </div>
+        <button class="ghost" @click="closeDay">关闭</button>
+      </div>
+      <p class="hint" v-if="daySourceNote">{{ daySourceNote }}</p>
+
+      <div class="day-summary">
+        <div><span>工资</span><b>¥{{ money(daySalary) }}</b></div>
+        <div><span>投资</span><b :class="signClass(dayInvest)">{{ signedMoney(dayInvest) }}</b></div>
+        <div class="total"><span>当日已赚</span><b>¥{{ money(dayTotal) }}</b></div>
+      </div>
+
+      <div class="day-list">
+        <p class="hint" v-if="!dayDraft.length">当前没有投资标的，当日投资收入为 0</p>
+        <div class="day-row" v-for="(item, index) in dayDraft" :key="index">
+          <div class="day-row-top">
+            <input v-model.trim="item.symbol" maxlength="6" inputmode="numeric" placeholder="代码" @change="calcDayProfit">
+            <input v-model.trim="item.name" placeholder="名称">
+            <button class="ghost danger" @click="removeDayItem(index)">删</button>
+          </div>
+          <div class="day-row-hold">
+            <label>持仓价<input type="number" v-model.number="item.cost" min="0" step="0.001" placeholder="未填写" @change="calcDayProfit"></label>
+            <label>股数<input type="number" v-model.number="item.shares" min="0" step="1" placeholder="未填写" @change="calcDayProfit"></label>
+            <span class="day-profit" :class="signClass(item.profit)">
+              {{ item.profit === null ? '…' : signedMoney(item.profit) }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-actions">
+        <button class="ghost" @click="addDayItem">+ 股票</button>
+        <button class="ghost danger" @click="clearDayItems">清空</button>
+        <button class="primary" :disabled="daySaving" @click="saveDay">
+          {{ daySaving ? '保存中…' : '保存' }}
+        </button>
+      </div>
+      <p class="hint error" v-if="dayMessage">{{ dayMessage }}</p>
+      <p class="hint" v-if="dayLoading">正在计算当日投资收入…</p>
+    </div>
+  </div>
 </div>
 
-<script src="app.js?v=2"></script>
-<script src="/salary_calculation/app.js?v=2"></script>
+<script src="app.js?v=10"></script>
+<script src="/salary_calculation/app.js?v=9"></script>
+<script>
+  // 尝试把浏览器窗口固定为 380×540。
+  // 页面内容本身已通过 CSS 固定为 380×540；浏览器通常只允许对脚本打开的窗口调整大小。
+  (function () {
+    try {
+      window.resizeTo(380, 540);
+    } catch (e) {}
+  })();
+</script>
 </body>
 </html>

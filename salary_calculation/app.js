@@ -14,7 +14,9 @@
  *   - 从上班到现在已经挣了多少钱（每 200ms 刷新一次）
  *   - 今日进度、已工作时长、距离下班时长
  *
- * 参数保存在 localStorage，下次打开自动恢复。
+ * 参数同时保存在浏览器 localStorage 与后端 SQLite：
+ * - 同一台机器重新打开时优先使用本地缓存；
+ * - 后端保存过的值会在启动时同步回来，复制 data/stock.db 到新机器即可沿用。
  * 支持跨天班次（如下班时间早于上班时间，视为次日下班）。
  *
  * 用法：页面上放一个空的容器即可，脚本会自动渲染并接管：
@@ -32,6 +34,7 @@
 
   var root = null;
   var timer = null;
+  var serverTimer = null;
   var els = {};
 
   /* ---------------- 参数读写 ---------------- */
@@ -57,6 +60,78 @@
     } catch (e) {
       // 隐私模式下可能写入失败，不影响当前页面的计算
     }
+  }
+
+  /* ---------------- 服务端同步（SQLite） ---------------- */
+
+  function toPayload(settings) {
+    return {
+      start: settings.start,
+      end: settings.end,
+      daily: Number(settings.daily)
+    };
+  }
+
+  /** 参数变化后延迟 300ms 写入后端，避免频繁请求 */
+  function syncToServer(settings) {
+    var payload = toPayload(settings);
+    if (!isClock(payload.start) || !isClock(payload.end) ||
+        !isFinite(payload.daily) || payload.daily < 0) {
+      return;
+    }
+    clearTimeout(serverTimer);
+    serverTimer = setTimeout(function () {
+      putServer(payload);
+    }, 300);
+  }
+
+  function putServer(payload) {
+    if (!window.fetch) return;
+    try {
+      fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  /** 用一份设置回填输入框（不触发写回） */
+  function applySettings(settings) {
+    var startInput = root.querySelector('[data-field="start"]');
+    var endInput = root.querySelector('[data-field="end"]');
+    var dailyInput = root.querySelector('[data-field="daily"]');
+    if (!startInput || !endInput || !dailyInput) return;
+    startInput.value = settings.start;
+    endInput.value = settings.end;
+    dailyInput.value = settings.daily;
+    update();
+  }
+
+  /**
+   * 启动时从后端读取设置：
+   * - 有保存过的值：覆盖本地并刷新；
+   * - 没有：把本地值上传，便于随 data/stock.db 一起迁移到其他机器。
+   */
+  function loadFromServer() {
+    if (!window.fetch) return;
+    try {
+      fetch('/api/settings').then(function (resp) {
+        return resp.ok ? resp.json() : null;
+      }).then(function (data) {
+        if (!data) return;
+        var daily = Number(data.daily);
+        if (isClock(data.start) && isClock(data.end) && isFinite(daily) && daily >= 0) {
+          var settings = { start: data.start, end: data.end, daily: daily };
+          saveSettings(settings);
+          applySettings(settings);
+        } else {
+          var local = readInputs();
+          saveSettings(local);
+          syncToServer(local);
+        }
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   function isClock(text) {
@@ -183,6 +258,7 @@
       input.addEventListener('input', function () {
         var settings = readInputs();
         saveSettings(settings);
+        syncToServer(settings);
         update();
       });
     });
@@ -264,6 +340,7 @@
 
     render(loadSettings());
     update();
+    loadFromServer();
 
     clearInterval(timer);
     timer = setInterval(update, TICK_MS);

@@ -10,24 +10,23 @@ body {
 }
 
 .salary-panel {
-  margin-top: 12px;
-  padding: 14px;
+  margin-top: 6px;
+  padding: 8px;
   border: 1px solid var(--border, rgba(148, 163, 184, 0.16));
-  border-radius: 14px;
+  border-radius: 8px;
   background: linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.88));
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
   color: var(--text, #e2e8f0);
 }
 
 .salary-head {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
 }
 
 .salary-title h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -35,15 +34,15 @@ body {
 .salary-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 4px;
 }
 
 .salary-form label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   color: var(--muted, #94a3b8);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .salary-form label:last-child {
@@ -52,13 +51,13 @@ body {
 
 .salary-form input {
   width: 100%;
-  padding: 6px 8px;
+  padding: 3px 5px;
   border: 1px solid var(--border, rgba(148, 163, 184, 0.16));
-  border-radius: 7px;
+  border-radius: 5px;
   outline: none;
   background: rgba(15, 23, 42, 0.8);
   color: var(--text, #e2e8f0);
-  font-size: 13px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -68,26 +67,26 @@ body {
 
 /* 主数字 + 进度条 */
 .salary-body {
-  margin-top: 12px;
+  margin-top: 6px;
 }
 
 .salary-main {
-  padding: 12px 14px;
+  padding: 8px 10px;
   border: 1px solid var(--border, rgba(148, 163, 184, 0.16));
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(15, 23, 42, 0.55);
 }
 
 .salary-label {
   color: var(--muted, #94a3b8);
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 1px;
 }
 
 .salary-earned {
   display: block;
-  margin: 4px 0 10px;
-  font-size: 34px;
+  margin: 2px 0 6px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
@@ -101,10 +100,10 @@ body {
 .salary-breakdown {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  margin: -2px 0 8px;
+  gap: 6px;
+  margin: -2px 0 5px;
   color: var(--muted, #94a3b8);
-  font-size: 11px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -126,7 +125,7 @@ body {
 }
 
 .salary-progress {
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.16);
   overflow: hidden;
@@ -145,14 +144,14 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 4px 10px;
-  margin-top: 8px;
+  gap: 2px 6px;
+  margin-top: 5px;
   color: var(--muted, #94a3b8);
-  font-size: 11px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-/* 单独打开时的页面样式 */
+/* 单独打开时的页面样式（保持宽松） */
 .salary-standalone {
   min-height: 100vh;
   padding: 16px;
@@ -167,4 +166,55 @@ body {
 .salary-standalone .salary-panel {
   max-width: 420px;
   margin: 0 auto;
+  padding: 14px;
+  border-radius: 14px;
+}
+
+.salary-standalone .salary-title h2 {
+  font-size: 14px;
+}
+
+.salary-standalone .salary-form {
+  gap: 8px;
+}
+
+.salary-standalone .salary-form label {
+  font-size: 11px;
+  gap: 4px;
+}
+
+.salary-standalone .salary-form input {
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 7px;
+}
+
+.salary-standalone .salary-body {
+  margin-top: 12px;
+}
+
+.salary-standalone .salary-main {
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+.salary-standalone .salary-earned {
+  font-size: 34px;
+  margin: 4px 0 10px;
+}
+
+.salary-standalone .salary-breakdown {
+  font-size: 11px;
+  gap: 10px;
+  margin: -2px 0 8px;
+}
+
+.salary-standalone .salary-progress {
+  height: 8px;
+}
+
+.salary-standalone .salary-foot {
+  margin-top: 8px;
+  font-size: 11px;
+  gap: 4px 10px;
 }

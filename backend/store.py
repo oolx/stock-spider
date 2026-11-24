@@ -7,7 +7,9 @@
 数据表：
 
 * ``symbols``：标的配置，``id`` 为主键；
-* ``ticks``：行情点，按自增 ``id`` 递增，``payload`` 保存完整 tick JSON。
+* ``ticks``：行情点，按自增 ``id`` 递增，``payload`` 保存完整 tick JSON；
+* ``settings``：键值配置（秒薪参数、年度节假日缓存等）；
+* ``day_holdings``：按日期保存的持仓快照，用于日历页统计当日投资收入。
 
 行情点每个标的只保留最近 ``MAX_POINTS`` 条，写入后即裁剪。
 SQLite 为 Python 标准库自带，无需额外安装任何数据库服务，便于 Windows 部署。
@@ -17,6 +19,7 @@ import asyncio
 import functools
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -38,6 +41,19 @@ _SCHEMA = (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         symbol_id TEXT NOT NULL,
         payload TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS day_holdings (
+        date TEXT PRIMARY KEY,
+        items TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_ticks_symbol ON ticks(symbol_id, id)",
@@ -106,6 +122,26 @@ class TickStore:
     async def close(self) -> None:
         """SQLite 每次操作独立连接，这里无需额外清理。"""
         return None
+
+    async def get_setting(self, key: str):
+        """读取一个配置值（JSON 字符串），不存在时返回 None。"""
+        return await self._run(self._get_setting_sync, key)
+
+    async def set_setting(self, key: str, value: str) -> None:
+        """写入或覆盖一个配置值。"""
+        await self._run(self._set_setting_sync, key, value)
+
+    async def get_day_holdings_on_or_before(self, day: str):
+        """返回某天或之前最近一条持仓快照（date, items），没有则 None。"""
+        return await self._run(self._get_day_holdings_on_or_before_sync, day)
+
+    async def save_day_holdings(self, day: str, items_json: str) -> None:
+        """保存某一天的标的快照。"""
+        await self._run(self._save_day_holdings_sync, day, items_json)
+
+    async def list_day_holdings(self) -> List[Dict[str, Any]]:
+        """按日期正序返回全部持仓快照，供月度统计一次读取。"""
+        return await self._run(self._list_day_holdings_sync)
 
     async def _run(self, func, *args):
         loop = asyncio.get_running_loop()
@@ -205,5 +241,58 @@ class TickStore:
                 (symbol_id, limit),
             ).fetchall()
             return [row["payload"] for row in rows]
+        finally:
+            conn.close()
+
+    def _get_setting_sync(self, key: str):
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else None
+        finally:
+            conn.close()
+
+    def _set_setting_sync(self, key: str, value: str) -> None:
+        conn = self._connect()
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+        finally:
+            conn.close()
+
+    def _get_day_holdings_on_or_before_sync(self, day: str):
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT date, items FROM day_holdings WHERE date <= ? "
+                "ORDER BY date DESC LIMIT 1",
+                (day,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def _save_day_holdings_sync(self, day: str, items_json: str) -> None:
+        conn = self._connect()
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO day_holdings (date, items, updated_at) "
+                    "VALUES (?, ?, ?)",
+                    (day, items_json, datetime.now().isoformat(timespec="seconds")),
+                )
+        finally:
+            conn.close()
+
+    def _list_day_holdings_sync(self) -> List[Dict[str, Any]]:
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT date, items FROM day_holdings ORDER BY date ASC"
+            ).fetchall()
+            return [dict(row) for row in rows]
         finally:
             conn.close()

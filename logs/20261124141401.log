@@ -1,0 +1,19 @@
+[2026-11-24 14:14:02,059] INFO 进入交易时段，开始抓取
+[2026-11-24 14:14:02,270] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.518880
+[2026-11-24 14:14:02,386] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.000001
+[2026-11-24 14:14:02,395] INFO 本轮抓取 2 条，第一条: stock:518880 7.398
+[2026-11-24 14:14:05,315] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.518880
+[2026-11-24 14:14:05,448] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.000001
+[2026-11-24 14:14:05,456] INFO 本轮抓取 2 条，第一条: stock:518880 7.398
+[2026-11-24 14:14:08,208] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.518880
+[2026-11-24 14:14:08,351] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.000001
+[2026-11-24 14:14:08,364] INFO 本轮抓取 2 条，第一条: stock:518880 7.397
+[2026-11-24 14:14:11,253] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.518880
+[2026-11-24 14:14:11,382] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.000001
+[2026-11-24 14:14:11,396] INFO 本轮抓取 2 条，第一条: stock:518880 7.398
+[2026-11-24 14:14:14,299] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.518880
+[2026-11-24 14:14:14,457] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.000001
+[2026-11-24 14:14:14,469] INFO 本轮抓取 2 条，第一条: stock:518880 7.397
+[2026-11-24 14:14:17,244] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.518880
+[2026-11-24 14:17:08,457] INFO 爬取：http://push2.eastmoney.com/api/qt/ulist.np/get?ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2&invt=2&fields=f2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf8%2Cf10%2Cf12%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21&secids=1.000001
+[2026-11-24 14:17:08,467] INFO 本轮抓取 2 条，第一条: stock:518880 7.397
