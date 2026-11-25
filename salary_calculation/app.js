@@ -29,6 +29,8 @@
   'use strict';
 
   var STORAGE_KEY = 'moyu_salary_settings_v1';
+  // 后端地址：浏览器下为空（同源），Electron 下由 config.js 指向本机 8000
+  var API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBase) || '';
   var DEFAULTS = { start: '09:00', end: '18:00', daily: 300 };
   var TICK_MS = 200;
 
@@ -88,7 +90,7 @@
   function putServer(payload) {
     if (!window.fetch) return;
     try {
-      fetch('/api/settings', {
+      fetch(API_BASE + '/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -116,7 +118,7 @@
   function loadFromServer() {
     if (!window.fetch) return;
     try {
-      fetch('/api/settings').then(function (resp) {
+      fetch(API_BASE + '/api/settings').then(function (resp) {
         return resp.ok ? resp.json() : null;
       }).then(function (data) {
         if (!data) return;
@@ -219,7 +221,7 @@
     root.innerHTML = [
       '<div class="salary-head">',
       '  <div class="salary-title">',
-      '    <h2>摸鱼秒薪计算器</h2>',
+      '    <h2>秒薪计算器</h2>',
       '  </div>',
       '  <div class="salary-form">',
       '    <label>上班时间<input type="time" data-field="start" value="' + settings.start + '"></label>',

@@ -4,10 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>A股实时行情</title>
-  <link rel="stylesheet" href="style.css?v=11">
-  <!-- 摸鱼秒薪计算器：样式与逻辑都在 salary_calculation 目录，由后端静态托管 -->
-  <link rel="stylesheet" href="/salary_calculation/style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=12">
+  <!-- 秒薪计算器：样式与逻辑都在同级 salary_calculation 目录 -->
+  <link rel="stylesheet" href="../salary_calculation/style.css?v=10">
   <!-- 本地静态依赖，无需 npm / 构建工具 -->
+  <script src="config.js?v=1"></script>
   <script src="vendor/vue.global.prod.js"></script>
   <script src="vendor/echarts.min.js"></script>
 </head>
@@ -28,6 +29,14 @@
       <button class="settings-btn" @click="toggleSettings">
         {{ settingsOpen ? '收起设置' : '标的设置' }}
       </button>
+      <div class="win-actions" v-if="isDesktop">
+        <button class="win-btn" title="最小化" @click="minimizeWindow">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 5h6"></path></svg>
+        </button>
+        <button class="win-btn win-close" title="关闭" @click="closeWindow">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6"></path></svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -65,7 +74,7 @@
     <section class="chart-panel">
       <div class="panel-head">
         <div>
-          <h2>实时行情走势</h2>
+          <h2>行情走势</h2>
         </div>
         <div class="chips" v-if="cards.length">
           <span class="chip" v-for="card in cards" :key="card.id">
@@ -175,8 +184,8 @@
   </div>
 </div>
 
-<script src="app.js?v=10"></script>
-<script src="/salary_calculation/app.js?v=9"></script>
+<script src="app.js?v=12"></script>
+<script src="../salary_calculation/app.js?v=11"></script>
 <script>
   // 尝试把浏览器窗口固定为 380×540。
   // 页面内容本身已通过 CSS 固定为 380×540；浏览器通常只允许对脚本打开的窗口调整大小。

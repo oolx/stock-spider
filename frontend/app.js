@@ -17,6 +17,9 @@
 
 const { createApp, reactive, ref, computed, nextTick, onMounted, onBeforeUnmount } = Vue;
 
+// 后端地址：浏览器下为空（同源），Electron 下由 config.js 指向本机 8000
+const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBase) || '';
+
 const MAX_POINTS = 500;
 const RETRY_BASE = 1000;
 const RETRY_MAX = 15000;
@@ -112,6 +115,15 @@ createApp({
     const cards = reactive([]);
     const status = ref('connecting');
     const error = ref('');
+
+    // 桌面端（Electron）窗口控制：无边框时由顶部栏承担最小化 / 关闭
+    const isDesktop = Boolean(window.APP_CONFIG && window.APP_CONFIG.isDesktop);
+    function minimizeWindow() {
+      if (window.desktop) window.desktop.minimize();
+    }
+    function closeWindow() {
+      if (window.desktop) window.desktop.close();
+    }
 
     // 标的设置面板
     const settingsOpen = ref(false);
@@ -388,7 +400,7 @@ createApp({
     /* ---------------- 初始加载 ---------------- */
 
     async function loadData() {
-      const response = await fetch('/api/symbols');
+      const response = await fetch(API_BASE + '/api/symbols');
       if (!response.ok) throw new Error(`加载标的失败：HTTP ${response.status}`);
       const payload = await response.json();
 
@@ -420,7 +432,7 @@ createApp({
       // 并发拉取每个标的的历史数据，静默填充，最后统一重绘
       await Promise.all(cards.map(async card => {
         try {
-          const res = await fetch(`/api/history?id=${encodeURIComponent(card.id)}&limit=${MAX_POINTS}`);
+          const res = await fetch(API_BASE + `/api/history?id=${encodeURIComponent(card.id)}&limit=${MAX_POINTS}`);
           if (!res.ok) return;
           const history = await res.json();
           (history.items || []).forEach(tick => appendPoint(card, tick, true));
@@ -535,7 +547,7 @@ createApp({
 
       saving.value = true;
       try {
-        const response = await fetch('/api/symbols', {
+        const response = await fetch(API_BASE + '/api/symbols', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items }),
@@ -575,7 +587,7 @@ createApp({
       calLoading.value = true;
       calError.value = '';
       try {
-        const response = await fetch(`/api/calendar?year=${calYear.value}&month=${calMonth.value}`);
+        const response = await fetch(API_BASE + `/api/calendar?year=${calYear.value}&month=${calMonth.value}`);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || `加载日历失败：HTTP ${response.status}`);
         calDays.value = payload.days || [];
@@ -593,7 +605,7 @@ createApp({
     async function loadMonthSummary() {
       try {
         const response = await fetch(
-          `/api/month-summary?year=${calYear.value}&month=${calMonth.value}`
+          API_BASE + `/api/month-summary?year=${calYear.value}&month=${calMonth.value}`
         );
         if (!response.ok) return;
         const payload = await response.json();
@@ -621,8 +633,8 @@ createApp({
       dayLoading.value = true;
       try {
         const [snapRes, settingsRes] = await Promise.all([
-          fetch(`/api/day-holdings?date=${cell.date}`),
-          fetch('/api/settings'),
+          fetch(API_BASE + `/api/day-holdings?date=${cell.date}`),
+          fetch(API_BASE + '/api/settings'),
         ]);
         const snapshot = snapRes.ok ? await snapRes.json() : null;
         const settings = settingsRes.ok ? await settingsRes.json() : {};
@@ -660,7 +672,7 @@ createApp({
         }
         try {
           const response = await fetch(
-            `/api/daily-quote?kind=stock&symbol=${item.symbol}&date=${dayDate.value}`
+            API_BASE + `/api/daily-quote?kind=stock&symbol=${item.symbol}&date=${dayDate.value}`
           );
           const quote = await response.json();
           const close = Number(quote.close);
@@ -722,7 +734,7 @@ createApp({
 
       daySaving.value = true;
       try {
-        const response = await fetch('/api/day-holdings', {
+        const response = await fetch(API_BASE + '/api/day-holdings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: dayDate.value, items }),
@@ -776,9 +788,10 @@ createApp({
       clearTimeout(retryTimer);
       status.value = 'connecting';
 
-      const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const wsBase = (window.APP_CONFIG && window.APP_CONFIG.wsBase)
+        || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
       try {
-        socket = new WebSocket(`${protocol}${location.host}/ws`);
+        socket = new WebSocket(`${wsBase}/ws`);
       } catch (e) {
         scheduleReconnect();
         return;
@@ -865,6 +878,9 @@ createApp({
       statusText,
       error,
       settingsOpen,
+      isDesktop,
+      minimizeWindow,
+      closeWindow,
       draft,
       saving,
       saveMessage,

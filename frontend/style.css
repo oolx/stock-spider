@@ -57,6 +57,7 @@ body {
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   background: rgba(11, 18, 32, 0.9);
+  -webkit-app-region: drag;
 }
 
 .brand {
@@ -214,6 +215,53 @@ body {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
+}
+
+/* 顶部栏可拖动窗口，按钮区域保持可点击 */
+.topbar-right .settings-btn,
+.topbar-right .win-actions {
+  -webkit-app-region: no-drag;
+}
+
+.win-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 1px;
+}
+
+.win-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.win-btn:hover {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text);
+}
+
+.win-btn.win-close:hover {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+.win-btn svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
 }
 
 .settings-btn,

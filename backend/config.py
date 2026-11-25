@@ -47,6 +47,3 @@ DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "stock.db")))
 
 # IndexDataSpider 支持的指数
 SUPPORTED_INDEX = ("399001", "000001", "399006", "000300")
-
-# 前端静态文件目录
-FRONTEND_DIR = BASE_DIR / "frontend"

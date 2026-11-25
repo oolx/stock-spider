@@ -19,8 +19,9 @@
 * ``GET  /api/day-holdings?date=2026-11-24``       某日保存的持仓快照
 * ``PUT  /api/day-holdings``                       保存某日持仓（不影响行情页）
 * ``WS   /ws``                                     实时 tick 推送
-* ``GET  /salary_calculation/``                    摸鱼秒薪计算器（独立页面 / 静态资源）
-* ``GET  /``                                       前端页面（Vue3 + ECharts）
+
+后端只提供 API 与 WebSocket，不再托管前端静态资源；
+前端由 Electron 桌面应用（desktop/）从本地文件加载。
 """
 
 import asyncio
@@ -34,11 +35,9 @@ from typing import List
 import requests
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .config import BASE_DIR, DB_PATH, FRONTEND_DIR, INDEX_NAMES, SUPPORTED_INDEX, SYMBOLS
+from .config import DB_PATH, INDEX_NAMES, SUPPORTED_INDEX, SYMBOLS
 from .hub import ConnectionHub
 from .scheduler import TickScheduler
 from .store import TickStore
@@ -247,7 +246,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="A股实时行情", lifespan=lifespan)
 
-# 允许前端单独部署时跨域访问
+# 前端由 Electron 以 file:// 加载，需要允许跨域访问本服务
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -562,21 +561,3 @@ async def websocket_endpoint(websocket: WebSocket):
         hub.disconnect(websocket)
     except Exception:
         hub.disconnect(websocket)
-
-
-# 摸鱼秒薪计算器的静态资源（独立页面与行情页共用同一份 css/js）
-SALARY_DIR = BASE_DIR / "salary_calculation"
-if SALARY_DIR.exists():
-    app.mount(
-        "/salary_calculation",
-        StaticFiles(directory=str(SALARY_DIR), html=True),
-        name="salary-calculation",
-    )
-
-# 前端静态资源挂在根路径，必须在 API 路由之后注册
-if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-else:
-    @app.get("/")
-    async def missing_frontend():
-        return JSONResponse({"error": "frontend 目录不存在"}, status_code=404)

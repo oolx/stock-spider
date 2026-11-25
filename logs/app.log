@@ -304,3 +304,73 @@ INFO:     ('127.0.0.1', 40356) - "WebSocket /ws" [accepted]
 INFO:     connection open
 INFO:     127.0.0.1:40352 - "GET /api/calendar?year=2026&month=11 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:40352 - "GET /api/month-summary?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42066 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42074 - "GET /salary_calculation/app.js?v=10 HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     ('127.0.0.1', 60946) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:53206 - "GET /api/day-holdings?date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53210 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53210 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50652 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50650 - "GET /api/day-holdings?date=2026-11-19 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [124736]
+INFO:     Started server process [130379]
+INFO:     Waiting for application startup.
+[2026-11-25 22:04:18] INFO 非交易时段，暂停抓取
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     ('127.0.0.1', 51628) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:46470 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46482 - "GET / HTTP/1.1" 404 Not Found
+INFO:     ('127.0.0.1', 55898) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:58778 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58778 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58782 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58778 - "GET /api/history?id=index%3A000001&limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58788 - "GET /api/history?id=stock%3A518880&limit=500 HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 58790) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59730 - "GET /api/calendar?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/month-summary?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50844 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/day-holdings?date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50864 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50858 - "GET /api/day-holdings?date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50858 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57872 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57872 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53400 - "PUT /api/day-holdings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "GET /api/month-summary?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "PUT /api/day-holdings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "GET /api/daily-quote?kind=stock&symbol=518880&date=2026-11-25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "GET /api/month-summary?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     127.0.0.1:33134 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33134 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33142 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33134 - "GET /api/history?id=index%3A000001&limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33154 - "GET /api/history?id=stock%3A518880&limit=500 HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 33156) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:33166 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33166 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33154 - "GET /api/calendar?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33180 - "GET /api/symbols HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33166 - "GET /api/history?id=index%3A000001&limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33192 - "GET /api/history?id=stock%3A518880&limit=500 HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 59604) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:33154 - "GET /api/month-summary?year=2026&month=11 HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     connection closed
