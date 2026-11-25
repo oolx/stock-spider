@@ -18,6 +18,12 @@ function rendererEntry() {
   return path.join(base, 'frontend', 'index.html');
 }
 
+function iconPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, 'build', 'icon.png');
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: WINDOW_WIDTH,
@@ -27,7 +33,10 @@ function createWindow() {
     maximizable: false,
     fullscreenable: false,
     title: 'A股实时行情',
-    backgroundColor: '#0b1220',
+    icon: iconPath(),
+    // 透明窗口 + 页面圆角，营造类似 Windows 11 的圆角外观
+    backgroundColor: '#00000000',
+    transparent: true,
     frame: false,
     show: false,
     webPreferences: {

@@ -162,6 +162,8 @@ chmod +x desktop/dist/AStock-1.0.0-x86_64.AppImage
 
 - 开发调试：`cd desktop && npm start`
 - 应用启动时自动探测后端，未连接会提示先执行 `./start.sh start`，可点击「重试」
+- 点击顶部「实时连接」可设置后端 IP 与端口（支持局域网其他电脑或云服务器，云服务器可勾选 HTTPS）
+- 远程后端需以 `HOST=0.0.0.0 PORT=8000 ./start.sh restart` 启动，并在防火墙放行对应端口
 - 页面窗口固定 380×540，不再通过浏览器访问后端根路径（后端已不托管静态文件）
 - Windows 桌面端可后续在 Windows 机器上执行 `npx electron-builder --win` 构建
 

@@ -32,6 +32,10 @@
       {
         "from": "../salary_calculation",
         "to": "renderer/salary_calculation"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
       }
     ],
     "linux": {
@@ -42,7 +46,8 @@
         }
       ],
       "category": "Office;Finance",
-      "synopsis": "A股实时行情桌面客户端"
+      "synopsis": "A股实时行情桌面客户端",
+      "icon": "build/icons"
     }
   }
 }

@@ -1,0 +1,31 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# ---------- 运行数据与日志（运行时生成，不提交） ----------
+data/*.db
+data/*.db-wal
+data/*.db-shm
+logs/
+run/
+*.log
+
+# ---------- Node / Electron ----------
+desktop/node_modules/
+desktop/dist/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- 工具与系统 ----------
+.screenshots/
+.trae-html-share-packages/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

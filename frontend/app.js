@@ -17,8 +17,10 @@
 
 const { createApp, reactive, ref, computed, nextTick, onMounted, onBeforeUnmount } = Vue;
 
-// 后端地址：浏览器下为空（同源），Electron 下由 config.js 指向本机 8000
-const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBase) || '';
+// 后端地址：可在顶部「实时连接」中修改，保存后刷新页面生效
+function apiBase() {
+  return (window.APP_CONFIG && window.APP_CONFIG.apiBase) || '';
+}
 
 const MAX_POINTS = 500;
 const RETRY_BASE = 1000;
@@ -123,6 +125,58 @@ createApp({
     }
     function closeWindow() {
       if (window.desktop) window.desktop.close();
+    }
+
+    // 服务器地址设置：后端可运行在本机、局域网或云服务器
+    const serverOpen = ref(false);
+    const serverHost = ref('');
+    const serverPort = ref('');
+    const serverTls = ref(false);
+    const serverError = ref('');
+
+    function openServerSettings() {
+      const server = window.APP_CONFIG && window.APP_CONFIG.server;
+      const current = server ? server.get() : { host: '127.0.0.1', port: '8000', tls: false };
+      serverHost.value = current.host;
+      serverPort.value = String(current.port);
+      serverTls.value = Boolean(current.tls);
+      serverError.value = '';
+      serverOpen.value = true;
+    }
+
+    function closeServerSettings() {
+      serverOpen.value = false;
+    }
+
+    function resetServerSettings() {
+      const server = window.APP_CONFIG && window.APP_CONFIG.server;
+      if (server) server.reset();
+      location.reload();
+    }
+
+    function saveServerSettings() {
+      const host = serverHost.value.trim();
+      const port = serverPort.value.trim();
+      if (!host) {
+        serverError.value = '请填写服务器地址';
+        return;
+      }
+      if (/[\s/:]/.test(host)) {
+        serverError.value = '只填 IP 或域名，不要带 http:// 或路径';
+        return;
+      }
+      const portNum = Number(port);
+      if (!/^\d+$/.test(port) || portNum < 1 || portNum > 65535) {
+        serverError.value = '端口需为 1-65535 的整数';
+        return;
+      }
+      const server = window.APP_CONFIG && window.APP_CONFIG.server;
+      if (!server) {
+        serverError.value = '当前环境不支持修改服务器地址';
+        return;
+      }
+      server.save(host, portNum, serverTls.value);
+      location.reload();
     }
 
     // 标的设置面板
@@ -400,7 +454,7 @@ createApp({
     /* ---------------- 初始加载 ---------------- */
 
     async function loadData() {
-      const response = await fetch(API_BASE + '/api/symbols');
+      const response = await fetch(apiBase() + '/api/symbols');
       if (!response.ok) throw new Error(`加载标的失败：HTTP ${response.status}`);
       const payload = await response.json();
 
@@ -432,7 +486,7 @@ createApp({
       // 并发拉取每个标的的历史数据，静默填充，最后统一重绘
       await Promise.all(cards.map(async card => {
         try {
-          const res = await fetch(API_BASE + `/api/history?id=${encodeURIComponent(card.id)}&limit=${MAX_POINTS}`);
+          const res = await fetch(apiBase() + `/api/history?id=${encodeURIComponent(card.id)}&limit=${MAX_POINTS}`);
           if (!res.ok) return;
           const history = await res.json();
           (history.items || []).forEach(tick => appendPoint(card, tick, true));
@@ -547,7 +601,7 @@ createApp({
 
       saving.value = true;
       try {
-        const response = await fetch(API_BASE + '/api/symbols', {
+        const response = await fetch(apiBase() + '/api/symbols', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items }),
@@ -587,7 +641,7 @@ createApp({
       calLoading.value = true;
       calError.value = '';
       try {
-        const response = await fetch(API_BASE + `/api/calendar?year=${calYear.value}&month=${calMonth.value}`);
+        const response = await fetch(apiBase() + `/api/calendar?year=${calYear.value}&month=${calMonth.value}`);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || `加载日历失败：HTTP ${response.status}`);
         calDays.value = payload.days || [];
@@ -605,7 +659,7 @@ createApp({
     async function loadMonthSummary() {
       try {
         const response = await fetch(
-          API_BASE + `/api/month-summary?year=${calYear.value}&month=${calMonth.value}`
+          apiBase() + `/api/month-summary?year=${calYear.value}&month=${calMonth.value}`
         );
         if (!response.ok) return;
         const payload = await response.json();
@@ -633,8 +687,8 @@ createApp({
       dayLoading.value = true;
       try {
         const [snapRes, settingsRes] = await Promise.all([
-          fetch(API_BASE + `/api/day-holdings?date=${cell.date}`),
-          fetch(API_BASE + '/api/settings'),
+          fetch(apiBase() + `/api/day-holdings?date=${cell.date}`),
+          fetch(apiBase() + '/api/settings'),
         ]);
         const snapshot = snapRes.ok ? await snapRes.json() : null;
         const settings = settingsRes.ok ? await settingsRes.json() : {};
@@ -672,7 +726,7 @@ createApp({
         }
         try {
           const response = await fetch(
-            API_BASE + `/api/daily-quote?kind=stock&symbol=${item.symbol}&date=${dayDate.value}`
+            apiBase() + `/api/daily-quote?kind=stock&symbol=${item.symbol}&date=${dayDate.value}`
           );
           const quote = await response.json();
           const close = Number(quote.close);
@@ -734,7 +788,7 @@ createApp({
 
       daySaving.value = true;
       try {
-        const response = await fetch(API_BASE + '/api/day-holdings', {
+        const response = await fetch(apiBase() + '/api/day-holdings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: dayDate.value, items }),
@@ -881,6 +935,15 @@ createApp({
       isDesktop,
       minimizeWindow,
       closeWindow,
+      serverOpen,
+      serverHost,
+      serverPort,
+      serverTls,
+      serverError,
+      openServerSettings,
+      closeServerSettings,
+      resetServerSettings,
+      saveServerSettings,
       draft,
       saving,
       saveMessage,

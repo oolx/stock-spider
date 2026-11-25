@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>A股实时行情</title>
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=15">
   <!-- 秒薪计算器：样式与逻辑都在同级 salary_calculation 目录 -->
   <link rel="stylesheet" href="../salary_calculation/style.css?v=10">
   <!-- 本地静态依赖，无需 npm / 构建工具 -->
-  <script src="config.js?v=1"></script>
+  <script src="config.js?v=3"></script>
   <script src="vendor/vue.global.prod.js"></script>
   <script src="vendor/echarts.min.js"></script>
 </head>
@@ -22,10 +22,11 @@
       </div>
     </div>
     <div class="topbar-right">
-      <div class="status" :class="status">
+      <button class="status" :class="status" type="button" @click="openServerSettings"
+              title="点击设置服务器地址">
         <span class="status-dot"></span>
         <span>{{ statusText }}</span>
-      </div>
+      </button>
       <button class="settings-btn" @click="toggleSettings">
         {{ settingsOpen ? '收起设置' : '标的设置' }}
       </button>
@@ -182,9 +183,42 @@
       <p class="hint" v-if="dayLoading">正在计算当日投资收入…</p>
     </div>
   </div>
+
+  <!-- 服务器地址设置（后端可运行在本机 / 局域网 / 云服务器） -->
+  <div class="day-modal" v-if="serverOpen" @click.self="closeServerSettings">
+    <div class="day-panel">
+      <div class="day-head">
+        <div>
+          <h3>服务器设置</h3>
+          <span class="hint">填写运行 Python 后端的电脑或云服务器地址</span>
+        </div>
+        <button class="ghost" @click="closeServerSettings">关闭</button>
+      </div>
+
+      <div class="server-form">
+        <label>服务器地址
+          <input v-model.trim="serverHost" placeholder="127.0.0.1 或 example.com" spellcheck="false" autocomplete="off">
+        </label>
+        <label>端口
+          <input v-model.trim="serverPort" placeholder="8000" inputmode="numeric" autocomplete="off">
+        </label>
+        <label class="server-check">
+          <input type="checkbox" v-model="serverTls">
+          使用 HTTPS / WSS（云服务器通常勾选）
+        </label>
+      </div>
+
+      <p class="hint error" v-if="serverError">{{ serverError }}</p>
+
+      <div class="day-actions">
+        <button class="ghost" @click="resetServerSettings">恢复默认</button>
+        <button class="primary" @click="saveServerSettings">保存并重连</button>
+      </div>
+    </div>
+  </div>
 </div>
 
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 <script src="../salary_calculation/app.js?v=11"></script>
 <script>
   // 尝试把浏览器窗口固定为 380×540。

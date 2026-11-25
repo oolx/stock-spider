@@ -30,7 +30,7 @@ body {
   margin: 0 auto;
   overflow: hidden;
   color: var(--text);
-  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   font-size: 12px;
   background: var(--bg);
 }
@@ -44,6 +44,19 @@ body {
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+/* Electron 无边框窗口：透明背景 + 四角圆角，贴近 Windows 11 风格 */
+html.is-desktop,
+html.is-desktop body {
+  background: transparent;
+}
+
+html.is-desktop #app {
+  background: var(--bg);
+  border-radius: 12px;
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .topbar {
@@ -93,9 +106,18 @@ body {
   padding: 2px 6px;
   border: 1px solid var(--border);
   border-radius: 999px;
+  background: transparent;
   color: var(--muted);
+  font-family: inherit;
   font-size: 10px;
   white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.status:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.08);
 }
 
 .status-dot {
@@ -218,6 +240,7 @@ body {
 }
 
 /* 顶部栏可拖动窗口，按钮区域保持可点击 */
+.topbar-right .status,
 .topbar-right .settings-btn,
 .topbar-right .win-actions {
   -webkit-app-region: no-drag;
@@ -231,14 +254,14 @@ body {
 }
 
 .win-btn {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 22px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -251,8 +274,8 @@ body {
 }
 
 .win-btn.win-close:hover {
-  background: rgba(248, 113, 113, 0.18);
-  color: #fca5a5;
+  background: #c42b1c;
+  color: #ffffff;
 }
 
 .win-btn svg {
@@ -269,7 +292,7 @@ body {
 .primary {
   padding: 3px 7px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text);
   font-size: 10px;
@@ -882,4 +905,49 @@ body {
 
 .day-actions .primary {
   margin-left: auto;
+}
+
+/* ---------- 服务器设置 ---------- */
+.server-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.server-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.server-form input[type="text"],
+.server-form input:not([type]) {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  outline: none;
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.server-form input:focus {
+  border-color: #38bdf8;
+}
+
+.server-form .server-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.server-form .server-check input {
+  width: auto;
+  accent-color: #0ea5e9;
 }
