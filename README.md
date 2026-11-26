@@ -169,6 +169,31 @@ chmod +x desktop/dist/AStock-1.0.0-x86_64.AppImage
 
 ---
 
+## 五之三、Android 客户端（Capacitor）
+
+`mobile/` 使用 Capacitor 复用同一套前端代码（`frontend/` + `salary_calculation/`），
+界面与桌面端一致，并针对手机屏幕做全屏自适应（含刘海屏安全区）。
+
+构建环境：JDK 17、Android SDK（platform 34 / build-tools 34.0.0）。
+
+```bash
+cd mobile
+npm install
+npm run sync            # 复制前端资源并同步到 android/
+cd android && ./gradlew assembleDebug
+```
+
+APK 输出：`mobile/android/app/build/outputs/apk/debug/app-debug.apk`。
+
+说明：
+
+- 安卓端没有本地 Python 后端，首次启动会自动弹出「服务器设置」，填写运行后端的电脑 IP 或云服务器地址；
+- 后端需以 `HOST=0.0.0.0 PORT=8000 ./start.sh restart` 启动，手机与后端电脑需在同一局域网（或使用公网地址）；
+- 应用已允许明文 HTTP（`usesCleartextTraffic` + 混合内容），云服务器可用 HTTPS/WSS；
+- 图标与启动图由桌面端同款图标生成，多密度适配。
+
+---
+
 ## 六、数据与配置
 
 - **数据库文件**：`data/stock.db`（SQLite），首次启动自动创建。

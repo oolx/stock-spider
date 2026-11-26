@@ -2,13 +2,13 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>A股实时行情</title>
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=18">
   <!-- 秒薪计算器：样式与逻辑都在同级 salary_calculation 目录 -->
   <link rel="stylesheet" href="../salary_calculation/style.css?v=10">
   <!-- 本地静态依赖，无需 npm / 构建工具 -->
-  <script src="config.js?v=3"></script>
+  <script src="config.js?v=5"></script>
   <script src="vendor/vue.global.prod.js"></script>
   <script src="vendor/echarts.min.js"></script>
 </head>
@@ -210,15 +210,18 @@
 
       <p class="hint error" v-if="serverError">{{ serverError }}</p>
 
+      <p class="hint" v-if="isNative">设为动态壁纸后，无需打开 App 也能在桌面实时查看行情走势与秒薪。</p>
+
       <div class="day-actions">
         <button class="ghost" @click="resetServerSettings">恢复默认</button>
+        <button class="ghost" v-if="isNative" @click="openLiveWallpaper">设为动态壁纸</button>
         <button class="primary" @click="saveServerSettings">保存并重连</button>
       </div>
     </div>
   </div>
 </div>
 
-<script src="app.js?v=13"></script>
+<script src="app.js?v=15"></script>
 <script src="../salary_calculation/app.js?v=11"></script>
 <script>
   // 尝试把浏览器窗口固定为 380×540。

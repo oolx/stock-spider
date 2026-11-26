@@ -951,3 +951,95 @@ html.is-desktop #app {
   width: auto;
   accent-color: #0ea5e9;
 }
+
+/* ---------- 安卓 / 手机自适应 ---------- */
+html.is-native,
+html.is-native body {
+  background: var(--bg);
+}
+
+html.is-native body {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+}
+
+html.is-native #app {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+/* 顶部栏与底部圆点适配刘海屏 / 手势条 */
+html.is-native .topbar {
+  flex: 0 0 auto;
+  min-height: calc(46px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+html.is-native .settings {
+  top: calc(46px + env(safe-area-inset-top, 0px));
+}
+
+html.is-native .pager {
+  flex: 0 0 auto;
+  min-height: calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html.is-native .pager-dot {
+  width: 10px;
+  height: 10px;
+}
+
+html.is-native .settings-btn {
+  padding: 5px 9px;
+}
+
+html.is-native .status {
+  padding: 4px 8px;
+}
+
+/* 图表随手机屏幕高度伸展（剩余空间全给图表） */
+html.is-native .dashboard {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 底部留白稍大一些，避免时间轴文字紧贴下方的秒薪计算器 */
+html.is-native .chart-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 6px 6px 12px;
+}
+
+html.is-native .chart-single {
+  flex: 1;
+  height: auto;
+  min-height: 120px;
+}
+
+html.is-native .salary-panel {
+  flex: 0 0 auto;
+  margin-top: 10px;
+}
+
+/* 日历行高随屏幕高度伸展 */
+html.is-native .cal-grid {
+  flex: 1;
+  min-height: 0;
+  grid-auto-rows: minmax(48px, 1fr);
+}
+
+html.is-native .cal-cell {
+  height: auto;
+}
+
+/* 弹层避开刘海与手势条 */
+html.is-native .day-modal {
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 8px
+           calc(8px + env(safe-area-inset-bottom, 0px));
+}

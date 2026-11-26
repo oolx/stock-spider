@@ -120,6 +120,8 @@ createApp({
 
     // 桌面端（Electron）窗口控制：无边框时由顶部栏承担最小化 / 关闭
     const isDesktop = Boolean(window.APP_CONFIG && window.APP_CONFIG.isDesktop);
+    // 安卓端（Capacitor）：用于展示「设为动态壁纸」入口
+    const isNative = Boolean(window.APP_CONFIG && window.APP_CONFIG.isNative);
     function minimizeWindow() {
       if (window.desktop) window.desktop.minimize();
     }
@@ -176,7 +178,66 @@ createApp({
         return;
       }
       server.save(host, portNum, serverTls.value);
+      syncWallpaperServer();
       location.reload();
+    }
+
+    /* ---------------- 安卓动态壁纸 ---------------- */
+
+    /** 原生壁纸插件（仅安卓端注册） */
+    function liveWallpaperPlugin() {
+      const capacitor = window.Capacitor;
+      return capacitor && capacitor.Plugins ? capacitor.Plugins.LiveWallpaper : null;
+    }
+
+    /**
+     * 把当前服务器地址同步给原生壁纸服务。
+     * 壁纸运行在原生侧，读不到 WebView 的 localStorage，需要单独写入。
+     */
+    function syncWallpaperServer() {
+      const plugin = liveWallpaperPlugin();
+      const server = window.APP_CONFIG && window.APP_CONFIG.server;
+      if (!plugin || !server) return;
+      const current = server.get();
+      try {
+        plugin.setServer({
+          host: current.host,
+          port: String(current.port),
+          tls: Boolean(current.tls),
+        }).catch(() => {});
+      } catch (e) {
+        // 旧版本未安装插件时忽略
+      }
+    }
+
+    /** 校验表单后打开系统动态壁纸预览 */
+    function openLiveWallpaper() {
+      const host = serverHost.value.trim();
+      const port = serverPort.value.trim();
+      if (!host) {
+        serverError.value = '请填写服务器地址';
+        return;
+      }
+      if (/[\s/:]/.test(host)) {
+        serverError.value = '只填 IP 或域名，不要带 http:// 或路径';
+        return;
+      }
+      const portNum = Number(port);
+      if (!/^\d+$/.test(port) || portNum < 1 || portNum > 65535) {
+        serverError.value = '端口需为 1-65535 的整数';
+        return;
+      }
+      const plugin = liveWallpaperPlugin();
+      if (!plugin) {
+        serverError.value = '当前环境不支持动态壁纸';
+        return;
+      }
+      serverError.value = '';
+      plugin.setServer({ host, port: String(portNum), tls: Boolean(serverTls.value) })
+        .then(() => plugin.open())
+        .catch(e => {
+          serverError.value = (e && e.message) || '打开壁纸设置失败';
+        });
     }
 
     // 标的设置面板
@@ -907,6 +968,12 @@ createApp({
 
     onMounted(async () => {
       window.addEventListener('resize', handleResize);
+      // 安卓端：把服务器地址同步给动态壁纸服务
+      syncWallpaperServer();
+      // 安卓端首次启动：先引导填写后端地址
+      if (window.APP_CONFIG && window.APP_CONFIG.needsServer) {
+        openServerSettings();
+      }
       try {
         await loadData();
       } catch (e) {
@@ -933,6 +1000,7 @@ createApp({
       error,
       settingsOpen,
       isDesktop,
+      isNative,
       minimizeWindow,
       closeWindow,
       serverOpen,
@@ -944,6 +1012,7 @@ createApp({
       closeServerSettings,
       resetServerSettings,
       saveServerSettings,
+      openLiveWallpaper,
       draft,
       saving,
       saveMessage,

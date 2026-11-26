@@ -12,6 +12,16 @@
   var DEFAULT_HOST = '127.0.0.1';
   var DEFAULT_PORT = '8000';
   var isDesktop = location.protocol === 'file:';
+  var isNative = !!(window.Capacitor
+    && typeof window.Capacitor.isNativePlatform === 'function'
+    && window.Capacitor.isNativePlatform());
+  // Capacitor 注入时机异常时的兜底判断：Android WebView 下的 localhost 页面
+  if (!isNative && typeof navigator !== 'undefined'
+    && /Android/i.test(navigator.userAgent)
+    && /^https?:$/.test(location.protocol)
+    && location.hostname === 'localhost') {
+    isNative = true;
+  }
 
   function readSaved() {
     try {
@@ -52,6 +62,9 @@
 
   window.APP_CONFIG = {
     isDesktop: isDesktop,
+    isNative: isNative,
+    // 安卓端首次启动且未保存过地址时，自动弹出服务器设置
+    needsServer: isNative && !readSaved() && !window.STOCK_API_BASE,
     apiBase: '',
     wsBase: '',
     server: {
@@ -87,5 +100,9 @@
   // 桌面端标记：用于透明背景与窗口圆角等 Electron 专属样式
   if (isDesktop) {
     document.documentElement.classList.add('is-desktop');
+  }
+  // 安卓端标记：用于全屏自适应与安全区样式
+  if (isNative) {
+    document.documentElement.classList.add('is-native');
   }
 })();
