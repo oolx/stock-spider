@@ -22,7 +22,12 @@ function apiBase() {
   return (window.APP_CONFIG && window.APP_CONFIG.apiBase) || '';
 }
 
-const MAX_POINTS = 500;
+// 前端环形缓冲上限：3 秒一个点，6000 点约覆盖 5 小时，足够容纳一整个交易日
+// （09:30–11:30 + 13:00–15:00 共 4 小时），收盘后可以直接回看全天走势
+const MAX_POINTS = 6000;
+// 相邻两笔行情在“压缩后的交易分钟”上超过这个跨度，就认为中间真实缺失数据，
+// 折线在此断开，避免把长时间断档伪装成连续行情（午休/隔夜已被压缩，不会误判）
+const GAP_MINUTES = 2.5;
 const RETRY_BASE = 1000;
 const RETRY_MAX = 15000;
 const ALLOWED_INDEX = ['399001', '000001', '399006', '000300'];
@@ -39,6 +44,15 @@ function todayString() {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+/** 时间戳对应的本地日期（YYYY-MM-DD），用于按交易日过滤行情 */
+function dayOf(ts) {
+  const date = new Date(Number(ts));
+  if (Number.isNaN(date.getTime())) return '';
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function calendarLabel(item) {
   if (item.type === 'holiday') return item.name || '假';
   if (item.type === 'rest') return '休';
@@ -51,7 +65,7 @@ function calendarLabel(item) {
  * 画出一条并不存在的“直线”。这里把时间映射成“累计交易分钟数”：
  * 只统计真实交易过的时间，非交易时段被折叠掉，折线自然衔接。
  */
-const TRADING_SESSIONS = [[570, 690], [780, 930]]; // 09:30-11:30、13:00-15:30
+const TRADING_SESSIONS = [[570, 690], [780, 900]]; // 09:30-11:30、13:00-15:00
 const SESSION_MINUTES = TRADING_SESSIONS.reduce((sum, [start, end]) => sum + (end - start), 0);
 
 /** 某个时刻在当天已经走过的交易分钟数（盘前/午休/盘后自动停在边界） */
@@ -96,7 +110,13 @@ function formatClock(minutes) {
 
 /** 压缩后的横轴值 -> 真实时钟，用于坐标轴刻度和指示线 */
 function clockLabel(minutes) {
-  let rest = Number(minutes) % SESSION_MINUTES;
+  const value = Number(minutes);
+  // 恰好在收盘时刻（交易分钟数为一整天整数倍）时显示 15:00，
+  // 否则 240 % 240 === 0 会被当成 09:30
+  if (value > 0 && Math.abs(value % SESSION_MINUTES) < 1e-6) {
+    return formatClock(TRADING_SESSIONS[TRADING_SESSIONS.length - 1][1]);
+  }
+  let rest = value % SESSION_MINUTES;
   if (rest < 0) rest += SESSION_MINUTES;
   for (let i = 0; i < TRADING_SESSIONS.length; i += 1) {
     const start = TRADING_SESSIONS[i][0];
@@ -107,9 +127,33 @@ function clockLabel(minutes) {
   return formatClock(TRADING_SESSIONS[TRADING_SESSIONS.length - 1][1]);
 }
 
-/** 把 [ts, price] 原始缓冲转换为图表数据，同时保留原始时间供 tooltip 使用 */
+/** 横轴基准：当天开盘（09:30）对应的压缩分钟，映射增量与全量都必须以它为原点 */
+function seriesBase(points) {
+  if (!points.length) return 0;
+  return Math.floor(compressTime(points[0][0]) / SESSION_MINUTES) * SESSION_MINUTES;
+}
+
+/**
+ * 把 [ts, price] 映射为图表点（横轴为压缩后的交易分钟）。
+ * from 用于增量追加，只映射 index >= from 的部分；
+ * 相邻两点跨度超过 GAP_MINUTES 时插入空值点，让折线在真实断档处断开。
+ */
+function mapRange(points, from, base) {
+  const data = [];
+  for (let i = Math.max(0, from); i < points.length; i += 1) {
+    const [ts, price] = points[i];
+    const x = compressTime(ts) - base;
+    if (i > 0 && x - (compressTime(points[i - 1][0]) - base) > GAP_MINUTES) {
+      data.push({ value: [x, null], ts });
+    }
+    data.push({ value: [x, price], ts });
+  }
+  return data;
+}
+
+/** 把 [ts, price] 原始缓冲全量转换为图表数据 */
 function toSeriesData(points) {
-  return points.map(point => ({ value: [compressTime(point[0]), point[1]], ts: point[0] }));
+  return mapRange(points, 0, seriesBase(points));
 }
 
 createApp({
@@ -329,6 +373,8 @@ createApp({
     let socket = null;
     let retryCount = 0;
     let retryTimer = null;
+    // 是否发生过断线：重连成功后需要补拉断线期间缺失的行情
+    let hadDisconnect = false;
 
     const statusText = computed(() => ({
       online: '实时连接',
@@ -370,10 +416,14 @@ createApp({
           textStyle: { color: '#e2e8f0', fontSize: 11 },
           formatter(params) {
             if (!params || !params.length) return '';
-            const first = params[0];
+            // 断档处插入的空值点没有价格，不参与展示
+            const visible = params.filter(item => item.value
+              && item.value[1] !== null && item.value[1] !== undefined);
+            if (!visible.length) return '';
+            const first = visible[0];
             const ts = (first.data && first.data.ts) || first.value[0];
             const time = new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
-            const lines = params.map(point => (
+            const lines = visible.map(point => (
               `${point.marker}${point.seriesName}：<b>${Number(point.value[1]).toFixed(2)}</b>`
             ));
             return `${time}<br/>${lines.join('<br/>')}`;
@@ -383,6 +433,10 @@ createApp({
           // 使用压缩后的“交易分钟”作为数值轴，午休/隔夜/周末不再占位
           type: 'value',
           scale: true,
+          // 右边界精确停在最后一个数据点（收盘即 15:00），
+          // 避免 ECharts 取整到 15:10 这类非交易时间刻度
+          max: value => value.max,
+          splitNumber: 6,
           ...axisStyle(),
           splitLine: { show: false },
           axisLabel: {
@@ -421,9 +475,11 @@ createApp({
           yAxisIndex: card.kind === 'index' ? 0 : 1,
           showSymbol: false,
           smooth: false,
+          // 断档处的空值点不连线，真实缺失的数据不会被画成一条假直线
+          connectNulls: false,
           lineStyle: { width: 1.2 },
           emphasis: { focus: 'series' },
-          data: toSeriesData(card.points),
+          data: card.chartData || [],
         })),
       };
     }
@@ -435,18 +491,61 @@ createApp({
       chart = echarts.init(el);
     }
 
+    /** 重建一条线的映射数据（横轴基准变化、乱序合并、裁剪之后使用） */
+    function rebuildSeriesData(card) {
+      card.chartBase = seriesBase(card.points);
+      card.chartData = toSeriesData(card.points);
+      card.chartCount = card.points.length;
+    }
+
     function renderChart() {
       if (!chart) return;
+      cards.forEach(rebuildSeriesData);
       // 标的增删或改名时整体重建，避免残留旧 series
       chart.setOption(buildOption(), { notMerge: true });
     }
 
-    function redraw(card) {
+    /* ---------------- 增量刷新 ----------------
+     * 每 3 秒一条实时行情：只映射新增的点追加到现有数组，
+     * 并把同一帧内的多次更新合并成一次 setOption，避免整表重建。
+     */
+    const dirtyCards = new Set();
+    let seriesFrame = 0;
+
+    function scheduleSeries(card) {
       if (!chart) return;
-      // 按 series id 只更新这一条线，实现增量追加（横轴同为压缩后的交易分钟）
-      chart.setOption({
-        series: [{ id: card.id, name: card.name, data: toSeriesData(card.points) }],
-      }, { lazyUpdate: true });
+      dirtyCards.add(card);
+      if (seriesFrame) return;
+      seriesFrame = requestAnimationFrame(() => {
+        seriesFrame = 0;
+        if (!chart) {
+          dirtyCards.clear();
+          return;
+        }
+        const series = [];
+        dirtyCards.forEach(item => {
+          series.push({ id: item.id, name: item.name, data: item.chartData || [] });
+        });
+        dirtyCards.clear();
+        chart.setOption({ series }, { lazyUpdate: true });
+      });
+    }
+
+    function redraw(card, change) {
+      if (!chart) return;
+      const added = (change && change.added) || 0;
+      // 追加、未乱序、未裁剪且横轴基准不变时，只把新点接到尾部
+      const canAppend = added > 0 && !change.sorted && !change.trimmed
+        && card.chartData && card.chartCount === card.points.length - added
+        && card.chartBase === seriesBase(card.points);
+
+      if (canAppend) {
+        card.chartData.push(...mapRange(card.points, card.points.length - added, card.chartBase));
+        card.chartCount = card.points.length;
+      } else {
+        rebuildSeriesData(card);
+      }
+      scheduleSeries(card);
     }
 
     /* ---------------- 持仓收益 ---------------- */
@@ -484,35 +583,146 @@ createApp({
       window.__investmentSnapshot = { profit, count };
     }
 
-    /* ---------------- 环形缓冲 ---------------- */
+    /* ---------------- 行情缓冲 ---------------- */
 
-    function appendPoint(card, tick, silent) {
-      const ts = Number(tick.ts) || Date.now();
-      const price = Number(tick.price);
-      if (!Number.isFinite(price)) return;
+    /** 行情点必须同时具备完整时间戳与有效价格，否则直接丢弃 */
+    function validPoint(ts, price) {
+      return Number.isFinite(ts) && ts > 0 && Number.isFinite(price) && price > 0;
+    }
 
-      card.points.push([ts, price]);
-      // 超过上限时丢弃最旧的点，保持最多 500 个
+    /**
+     * 把行情合并进缓冲：按完整时间戳去重并升序排列，超过上限丢弃最旧的点。
+     * 返回 { added, sorted, trimmed }：
+     *   added   新增的点数（同时间戳的更新不算新增）；
+     *   sorted  是否走了乱序合并（需要重建整条折线）；
+     *   trimmed 是否发生了裁剪（横轴基准可能变化）。
+     */
+    function mergePoints(card, incoming) {
+      if (!incoming.length) return { added: 0, sorted: false, trimmed: false };
+      const lastTs = card.points.length
+        ? card.points[card.points.length - 1][0] : -Infinity;
+      let added = 0;
+      let sorted = false;
+
+      if (incoming.every(point => point[0] > lastTs)) {
+        // 常见路径：整批都比缓冲里的新，直接追加，不做全量排序
+        card.points.push(...incoming);
+        added = incoming.length;
+      } else {
+        // 乱序路径：按时间戳合并去重后重排，保证横轴始终递增
+        const map = new Map(card.points.map(point => [point[0], point[1]]));
+        incoming.forEach(([ts, price]) => {
+          if (!map.has(ts)) added += 1;
+          map.set(ts, price);
+        });
+        card.points = Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
+        sorted = true;
+      }
+
+      let trimmed = false;
       if (card.points.length > MAX_POINTS) {
         card.points.splice(0, card.points.length - MAX_POINTS);
+        trimmed = true;
       }
+      return { added, sorted, trimmed };
+    }
 
-      card.price = price;
-      if (tick.prev_close !== null && tick.prev_close !== undefined) {
-        card.prevClose = Number(tick.prev_close);
+    /** 处理一条实时 tick */
+    function applyTick(card, tick) {
+      const ts = Number(tick.ts);
+      const price = Number(tick.price);
+      if (!validPoint(ts, price)) return;
+
+      const change = mergePoints(card, [[ts, price]]);
+      // 只有不早于现有最新时间的数据才更新展示用的最新价，避免回退
+      if (ts >= (card.lastTs || 0)) {
+        card.price = price;
+        if (tick.prev_close !== null && tick.prev_close !== undefined) {
+          card.prevClose = Number(tick.prev_close);
+        }
+        card.change = tick.change;
+        card.change_pct = tick.change_pct;
+        card.lastTs = ts;
+        card.lastTime = new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
+        // 股票名称由后端从行情接口带回（用户自定义名称优先）
+        if (tick.name) card.name = tick.name;
       }
-      card.change = tick.change;
-      card.change_pct = tick.change_pct;
-      card.lastTime = new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
-      // 股票名称由后端从行情接口带回（用户自定义名称优先）
-      if (tick.name) card.name = tick.name;
 
       updateInvestmentSnapshot();
+      redraw(card, change);
+    }
 
-      if (!silent) redraw(card);
+    /** 用历史数据里最新的一笔补齐价格/昨收/涨跌幅（不覆盖更新的实时数据） */
+    function applyHistoryMeta(card, items) {
+      for (let i = items.length - 1; i >= 0; i -= 1) {
+        const tick = items[i];
+        const ts = Number(tick.ts);
+        const price = Number(tick.price);
+        if (!validPoint(ts, price) || ts < (card.lastTs || 0)) continue;
+        card.price = price;
+        if (tick.prev_close !== null && tick.prev_close !== undefined) {
+          card.prevClose = Number(tick.prev_close);
+        }
+        card.change = tick.change;
+        card.change_pct = tick.change_pct;
+        card.lastTs = ts;
+        card.lastTime = new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
+        return;
+      }
     }
 
     /* ---------------- 初始加载 ---------------- */
+
+    /** 当前缓冲对应的交易日，跨日时清空重载，保证图上只有当天行情 */
+    let bufferDay = todayString();
+
+    /**
+     * 拉取当天历史行情：只保留当日数据，合并进现有缓冲。
+     * 不会清空已有数据 —— 实时 tick 与历史合并后统一按时间戳排序，
+     * 断线重连后补拉也能把缺失的中段补齐。
+     */
+    async function loadHistory() {
+      const day = todayString();
+      bufferDay = day;
+      await Promise.all(cards.map(async card => {
+        try {
+          // 后端单次最多返回 2000 点，step=3 抽样可覆盖 6000 个 tick（约一个交易日）
+          const res = await fetch(apiBase()
+            + `/api/history?id=${encodeURIComponent(card.id)}&limit=2000&step=3&day=${day}`);
+          if (!res.ok) return;
+          const history = await res.json();
+          const items = (history.items || []).filter(tick => dayOf(tick.ts) === day);
+          const incoming = items
+            .map(tick => [Number(tick.ts), Number(tick.price)])
+            .filter(([ts, price]) => validPoint(ts, price));
+          mergePoints(card, incoming);
+          applyHistoryMeta(card, items);
+        } catch (e) {
+          console.warn('加载历史数据失败', card.id, e);
+        }
+      }));
+      updateInvestmentSnapshot();
+      renderChart();
+    }
+
+    /** 每个交易日开盘时重新初始化：清空昨天的走势，只画当天行情 */
+    function resetForNewDay() {
+      bufferDay = todayString();
+      cards.forEach(card => {
+        card.points = [];
+        card.chartData = null;
+        card.chartCount = 0;
+        card.price = null;
+        card.prevClose = null;
+        card.change = null;
+        card.change_pct = null;
+        card.lastTs = 0;
+        card.lastTime = '';
+      });
+      updateInvestmentSnapshot();
+      renderChart();
+      loadHistory();
+    }
 
     async function loadData() {
       const response = await fetch(apiBase() + '/api/symbols');
@@ -530,8 +740,11 @@ createApp({
           prevClose: null,
           change: null,
           change_pct: null,
+          lastTs: 0,
           lastTime: '',
           points: [],
+          chartData: null,
+          chartCount: 0,
         });
       });
 
@@ -545,20 +758,7 @@ createApp({
       requestAnimationFrame(() => chart && chart.resize());
 
       // 并发拉取每个标的的历史数据，静默填充，最后统一重绘
-      await Promise.all(cards.map(async card => {
-        try {
-          const res = await fetch(apiBase() + `/api/history?id=${encodeURIComponent(card.id)}&limit=${MAX_POINTS}`);
-          if (!res.ok) return;
-          const history = await res.json();
-          (history.items || []).forEach(tick => appendPoint(card, tick, true));
-          if (card.points.length) redraw(card);
-        } catch (e) {
-          console.warn('加载历史数据失败', card.id, e);
-        }
-      }));
-
-      // 历史数据补齐后整体重绘一次
-      renderChart();
+      await loadHistory();
     }
 
     async function reloadDashboard() {
@@ -688,6 +888,8 @@ createApp({
       page.value = index;
       if (index === 1) {
         if (!calendarLoaded.value) loadCalendar();
+        // 每次进入日历页都重新拉取数字，避免后端重启后一直显示 0
+        else loadMonthSummary();
         return;
       }
       // 从日历页切回行情页时，图表在隐藏状态下尺寸为 0，需要重新校正
@@ -696,6 +898,34 @@ createApp({
         renderChart();
         requestAnimationFrame(() => chart && chart.resize());
       });
+    }
+
+    /* ---------------- 左右滑动切换页面 ---------------- */
+
+    // 记录手指按下位置，抬起时比较位移判断是否为横向滑动
+    const swipeStart = { x: 0, y: 0 };
+    const SWIPE_MIN = 60; // 横向位移阈值（px），避免误触
+
+    function onTouchStart(event) {
+      const touch = event.touches && event.touches[0];
+      if (!touch) return;
+      swipeStart.x = touch.clientX;
+      swipeStart.y = touch.clientY;
+    }
+
+    function onTouchEnd(event) {
+      // 弹窗或设置面板打开时不响应滑动，避免和表单操作冲突
+      if (settingsOpen.value || serverOpen.value) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      if (!touch) return;
+
+      const dx = touch.clientX - swipeStart.x;
+      const dy = touch.clientY - swipeStart.y;
+      // 横向位移要明显大于纵向，避免影响图表纵向查看
+      if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+
+      const target = dx < 0 ? page.value + 1 : page.value - 1;
+      if (target >= 0 && target <= 1) switchPage(target);
     }
 
     async function loadCalendar() {
@@ -915,6 +1145,17 @@ createApp({
       socket.onopen = () => {
         retryCount = 0;
         status.value = 'online';
+        const reconnected = hadDisconnect;
+        hadDisconnect = false;
+        if (todayString() !== bufferDay) {
+          // 应用在后台跨过了一夜：重连后先重置为当天数据
+          resetForNewDay();
+        } else if (reconnected) {
+          // 断线期间缺失的行情：重连后补拉当天历史并合并，避免把空档画成直线
+          loadHistory();
+        }
+        // 断线重连后补拉一次日历数字（断线期间拉取失败会留下 0）
+        if (calendarLoaded.value) loadMonthSummary();
       };
 
       socket.onmessage = event => {
@@ -928,7 +1169,15 @@ createApp({
 
         const id = message.id || `${message.kind}:${message.symbol}`;
         const card = cards.find(item => item.id === id);
-        if (card) appendPoint(card, message);
+        if (!card) return;
+
+        const tickDay = dayOf(message.ts);
+        if (tickDay !== bufferDay) {
+          // 跨日：收到新交易日的第一笔时清空并重新加载，旧日期的延迟数据直接忽略
+          if (tickDay > bufferDay) resetForNewDay();
+          return;
+        }
+        applyTick(card, message);
       };
 
       socket.onerror = () => {
@@ -938,6 +1187,7 @@ createApp({
 
       socket.onclose = () => {
         socket = null;
+        hadDisconnect = true;
         scheduleReconnect();
       };
     }
@@ -968,6 +1218,9 @@ createApp({
 
     onMounted(async () => {
       window.addEventListener('resize', handleResize);
+      // 左右滑动切换页面：用捕获阶段监听，避免被图表等子元素拦截
+      window.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
+      window.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
       // 安卓端：把服务器地址同步给动态壁纸服务
       syncWallpaperServer();
       // 安卓端首次启动：先引导填写后端地址
@@ -985,7 +1238,14 @@ createApp({
 
     onBeforeUnmount(() => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('touchstart', onTouchStart, true);
+      window.removeEventListener('touchend', onTouchEnd, true);
       clearTimeout(retryTimer);
+      if (seriesFrame) {
+        cancelAnimationFrame(seriesFrame);
+        seriesFrame = 0;
+      }
+      dirtyCards.clear();
       if (socket) socket.close();
       if (chart) {
         chart.dispose();
@@ -1026,6 +1286,8 @@ createApp({
       // 翻页与日历
       page,
       switchPage,
+      onTouchStart,
+      onTouchEnd,
       calYear,
       calMonth,
       calCells,

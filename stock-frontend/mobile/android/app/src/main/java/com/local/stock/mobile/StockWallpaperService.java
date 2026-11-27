@@ -1,6 +1,7 @@
 package com.local.stock.mobile;
 
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
@@ -57,6 +58,14 @@ public class StockWallpaperService extends WallpaperService {
 
         private static final long TICK_MS = 1000L;
         private static final long REFRESH_MS = 5000L;
+        // 非交易时段的重试间隔：只在「当天还没成功从网络刷新过」时使用
+        private static final long CLOSED_RETRY_MS = 30000L;
+        // 交易时段：09:30-11:30、13:00-15:00（累计交易分钟 0 -> 240）
+        private static final int SESSION_OPEN = 9 * 60 + 30;
+        private static final int SESSION_NOON = 11 * 60 + 30;
+        private static final int SESSION_RESUME = 13 * 60;
+        private static final int SESSION_CLOSE = 15 * 60;
+        private static final int SESSION_MINUTES = 240;
 
         private static final int COLOR_TEXT = 0xFFE2E8F0;
         private static final int COLOR_MUTED = 0xFF94A3B8;
@@ -76,7 +85,6 @@ public class StockWallpaperService extends WallpaperService {
         private final Paint bgPaint = new Paint();
 
         private final SimpleDateFormat clockFormat = new SimpleDateFormat("HH:mm", Locale.CHINA);
-        private final SimpleDateFormat pointFormat = new SimpleDateFormat("HH:mm", Locale.CHINA);
 
         private float density = 2f;
         private boolean visible;
@@ -88,6 +96,10 @@ public class StockWallpaperService extends WallpaperService {
         private String baseUrl = "";
         private boolean connected;
         private String errorText = "";
+        // 当前内存中行情对应的交易日（空表示还没有当天数据）
+        private volatile String loadedDay = "";
+        // 当天数据是否已经由网络成功刷新过；缓存恢复的数据为 false，只用于先画出曲线
+        private volatile boolean loadedFromNet;
 
         private final List<Card> cards = new ArrayList<>();
         private double salaryDaily = 300;
@@ -99,9 +111,14 @@ public class StockWallpaperService extends WallpaperService {
             public void run() {
                 if (!visible) return;
                 long now = System.currentTimeMillis();
-                if (now - lastRefreshAt >= REFRESH_MS) {
+                // 交易时段实时刷新；非交易时段只在「当天数据还没从网络刷新过」时重试，
+                // 避免旧版本留下的残缺缓存（例如收盘后一根直线）被永久冻结
+                long interval = isMarketOpen() ? REFRESH_MS : CLOSED_RETRY_MS;
+                if (now - lastRefreshAt >= interval) {
                     lastRefreshAt = now;
-                    refreshData();
+                    if (isMarketOpen() || !hasFreshDay()) {
+                        refreshData();
+                    }
                 }
                 drawFrame();
                 main.postDelayed(this, TICK_MS);
@@ -113,6 +130,7 @@ public class StockWallpaperService extends WallpaperService {
             super.onCreate(surfaceHolder);
             density = StockWallpaperService.this.getResources().getDisplayMetrics().density;
             readServer();
+            loadCache();
             WallpaperConfig.prefs(StockWallpaperService.this)
                     .registerOnSharedPreferenceChangeListener(this);
         }
@@ -132,6 +150,8 @@ public class StockWallpaperService extends WallpaperService {
             main.removeCallbacks(ticker);
             if (visible) {
                 readServer();
+                // 跨日后清掉缓存的旧行情，避免锁屏上继续显示昨天的走势
+                if (!todayString().equals(loadedDay)) loadCache();
                 lastRefreshAt = 0;
                 main.post(ticker);
             }
@@ -211,8 +231,10 @@ public class StockWallpaperService extends WallpaperService {
                             card.id = item.optString(
                                     "id", card.kind + ":" + item.optString("symbol", ""));
 
+                            // step=9：抽样覆盖整段交易时段；day 只取当天，避免混入昨天
                             String historyUrl = base + "/api/history?id="
-                                    + URLEncoder.encode(card.id, "UTF-8") + "&limit=180";
+                                    + URLEncoder.encode(card.id, "UTF-8")
+                                    + "&limit=700&step=9&day=" + todayString();
                             JSONArray points = new JSONObject(httpGet(historyUrl))
                                     .optJSONArray("items");
                             if (points != null) {
@@ -268,6 +290,12 @@ public class StockWallpaperService extends WallpaperService {
                     connected = ok;
                     errorText = error;
                 }
+                if (ok) {
+                    loadedDay = todayString();
+                    loadedFromNet = true;
+                    // 持久化当天走势：锁屏下次重建时无需等待网络即可还原曲线
+                    saveCache(fresh);
+                }
                 loading = false;
                 main.post(StockEngine.this::drawFrame);
             });
@@ -307,6 +335,154 @@ public class StockWallpaperService extends WallpaperService {
                 return hour * 60 + minute;
             } catch (Exception e) {
                 return fallback;
+            }
+        }
+
+        /* ---------------- 交易日与缓存 ---------------- */
+
+        /** 当前本地日期，格式 YYYY-MM-DD */
+        private String todayString() {
+            return new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(new Date());
+        }
+
+        /** 是否处于 A 股交易时段（工作日 09:30-11:30、13:00-15:00） */
+        private boolean isMarketOpen() {
+            Calendar now = Calendar.getInstance();
+            int weekday = now.get(Calendar.DAY_OF_WEEK);
+            if (weekday == Calendar.SATURDAY || weekday == Calendar.SUNDAY) return false;
+            int minutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE);
+            return (minutes >= SESSION_OPEN && minutes <= SESSION_NOON)
+                    || (minutes >= SESSION_RESUME && minutes <= SESSION_CLOSE);
+        }
+
+        /** 当天行情是否已经由网络成功刷新过（仅从缓存还原的数据不算） */
+        private boolean hasFreshDay() {
+            return loadedFromNet && todayString().equals(loadedDay);
+        }
+
+        /** 时间戳 -> 当天累计交易分钟（09:30 为 0，15:00 为 240，午休折叠） */
+        private double tradingMinutes(long ts) {
+            Calendar moment = Calendar.getInstance();
+            moment.setTimeInMillis(ts);
+            double minutes = moment.get(Calendar.HOUR_OF_DAY) * 60
+                    + moment.get(Calendar.MINUTE) + moment.get(Calendar.SECOND) / 60.0;
+            if (minutes <= SESSION_OPEN) return 0;
+            if (minutes <= SESSION_NOON) return minutes - SESSION_OPEN;
+            if (minutes < SESSION_RESUME) return SESSION_NOON - SESSION_OPEN;
+            if (minutes <= SESSION_CLOSE) {
+                return (SESSION_NOON - SESSION_OPEN) + (minutes - SESSION_RESUME);
+            }
+            return SESSION_MINUTES;
+        }
+
+        /** 累计交易分钟 -> "HH:MM"，与 App 折线图横轴保持一致 */
+        private String clockText(int minutes) {
+            if (minutes <= 0) return String.format(Locale.CHINA, "%02d:%02d",
+                    SESSION_OPEN / 60, SESSION_OPEN % 60);
+            if (minutes < SESSION_NOON - SESSION_OPEN) {
+                int clock = SESSION_OPEN + minutes;
+                return String.format(Locale.CHINA, "%02d:%02d", clock / 60, clock % 60);
+            }
+            if (minutes == SESSION_NOON - SESSION_OPEN) {
+                return String.format(Locale.CHINA, "%02d:%02d",
+                        SESSION_NOON / 60, SESSION_NOON % 60);
+            }
+            if (minutes >= SESSION_MINUTES) {
+                return String.format(Locale.CHINA, "%02d:%02d",
+                        SESSION_CLOSE / 60, SESSION_CLOSE % 60);
+            }
+            int clock = SESSION_RESUME + (minutes - (SESSION_NOON - SESSION_OPEN));
+            return String.format(Locale.CHINA, "%02d:%02d", clock / 60, clock % 60);
+        }
+
+        private SharedPreferences cachePrefs() {
+            return StockWallpaperService.this
+                    .getSharedPreferences("stock_wallpaper_cache", Context.MODE_PRIVATE);
+        }
+
+        /** 读取当天缓存的全天走势：锁屏不依赖 App 和网络也能画出完整曲线 */
+        private void loadCache() {
+            String raw = cachePrefs().getString("today", "");
+            if (raw == null || raw.isEmpty()) return;
+            try {
+                JSONObject root = new JSONObject(raw);
+                String day = root.optString("day", "");
+                if (!todayString().equals(day)) return;
+                JSONArray items = root.optJSONArray("cards");
+                if (items == null) return;
+
+                List<Card> cached = new ArrayList<>();
+                for (int i = 0; i < items.length(); i += 1) {
+                    JSONObject item = items.optJSONObject(i);
+                    if (item == null) continue;
+                    Card card = new Card();
+                    card.id = item.optString("id", "");
+                    card.kind = item.optString("kind", "stock");
+                    card.name = item.optString("name", "");
+                    card.cost = item.optDouble("cost", 0);
+                    card.shares = item.optDouble("shares", 0);
+                    card.price = item.isNull("price") ? null : item.optDouble("price");
+                    card.prevClose = item.isNull("prevClose") ? null : item.optDouble("prevClose");
+                    card.changePct = item.isNull("changePct") ? null : item.optDouble("changePct");
+
+                    JSONArray points = item.optJSONArray("points");
+                    if (points != null) {
+                        for (int j = 0; j < points.length(); j += 1) {
+                            JSONArray one = points.optJSONArray(j);
+                            if (one == null || one.length() < 2) continue;
+                            card.points.add(new Point(one.optLong(0), one.optDouble(1)));
+                        }
+                    }
+                    if (!card.points.isEmpty()) cached.add(card);
+                }
+                if (cached.isEmpty()) return;
+
+                synchronized (lock) {
+                    cards.clear();
+                    cards.addAll(cached);
+                }
+                loadedDay = day;
+                // 缓存只用来先画出曲线，标记为「未刷新」，进入壁纸后仍会补拉一次当天数据
+                loadedFromNet = false;
+                connected = true;
+                errorText = "";
+                main.post(this::drawFrame);
+            } catch (Exception ignored) {
+                // 缓存损坏时忽略，等待网络刷新
+            }
+        }
+
+        /** 把最近一次成功获取的当日走势写入本地缓存 */
+        private void saveCache(List<Card> source) {
+            try {
+                JSONArray items = new JSONArray();
+                for (Card card : source) {
+                    if (card.points.isEmpty()) continue;
+                    JSONObject item = new JSONObject();
+                    item.put("id", card.id);
+                    item.put("kind", card.kind);
+                    item.put("name", card.name);
+                    item.put("cost", card.cost);
+                    item.put("shares", card.shares);
+                    item.put("price", card.price == null ? JSONObject.NULL : card.price);
+                    item.put("prevClose", card.prevClose == null ? JSONObject.NULL : card.prevClose);
+                    item.put("changePct", card.changePct == null ? JSONObject.NULL : card.changePct);
+                    JSONArray points = new JSONArray();
+                    for (Point point : card.points) {
+                        JSONArray one = new JSONArray();
+                        one.put(point.ts);
+                        one.put(point.price);
+                        points.put(one);
+                    }
+                    item.put("points", points);
+                    items.put(item);
+                }
+                JSONObject root = new JSONObject();
+                root.put("day", todayString());
+                root.put("cards", items);
+                cachePrefs().edit().putString("today", root.toString()).apply();
+            } catch (Exception ignored) {
+                // 缓存写入失败不影响实时显示
             }
         }
 
@@ -415,12 +591,13 @@ public class StockWallpaperService extends WallpaperService {
                 canvas.drawText(error, cardX + cardW - pad, titleBase, paint);
             }
 
-            // 标的图例：圆点 + 名称 + 最新价 + 涨跌幅
-            float rowBase = titleBase + dp(16);
-            float cursor = cardX + pad;
-            int row = 0;
-            for (int i = 0; i < snapshot.size(); i += 1) {
+            // 标的图例：每行一个标的，左侧名称、右侧价格与涨跌幅，避免文字互相挤压
+            float legendBase = titleBase + dp(15);
+            float rowHeight = dp(14);
+            int legendRows = Math.min(snapshot.size(), 3);
+            for (int i = 0; i < legendRows; i += 1) {
                 Card card = snapshot.get(i);
+                float baseline = legendBase + i * rowHeight;
                 String priceText = card.price == null
                         ? "--" : String.format(Locale.CHINA, "%.2f", card.price);
                 String pctText = card.changePct == null
@@ -428,32 +605,22 @@ public class StockWallpaperService extends WallpaperService {
 
                 paint.setTypeface(Typeface.DEFAULT);
                 paint.setTextSize(dp(9.5f));
-                float nameW = paint.measureText(card.name);
-                float priceW = paint.measureText(priceText);
-                float pctW = paint.measureText(pctText);
-                float chipW = dp(9) + nameW + dp(5) + priceW + dp(4) + pctW;
-
-                if (cursor + chipW > cardX + cardW - pad
-                        && cursor > cardX + pad + dp(1)) {
-                    row += 1;
-                    if (row > 1) break;
-                    rowBase += dp(15);
-                    cursor = cardX + pad;
-                }
 
                 paint.setColor(seriesColor(i));
-                canvas.drawCircle(cursor + dp(3), rowBase - dp(3), dp(3), paint);
+                canvas.drawCircle(cardX + pad + dp(3), baseline - dp(3), dp(3), paint);
 
-                float textX = cursor + dp(9);
                 paint.setColor(0xFFCBD5E1);
-                canvas.drawText(card.name, textX, rowBase, paint);
-                textX += nameW + dp(5);
+                paint.setTextAlign(Paint.Align.LEFT);
+                canvas.drawText(card.name, cardX + pad + dp(9), baseline, paint);
+
                 paint.setColor(trendColor(card.changePct));
-                canvas.drawText(priceText, textX, rowBase, paint);
-                textX += priceW + dp(4);
-                canvas.drawText(pctText, textX, rowBase, paint);
-                cursor += chipW + dp(10);
+                paint.setTextAlign(Paint.Align.RIGHT);
+                canvas.drawText(pctText, cardX + cardW - pad, baseline, paint);
+                float pctWidth = paint.measureText(pctText);
+                canvas.drawText(priceText, cardX + cardW - pad - pctWidth - dp(6),
+                        baseline, paint);
             }
+            paint.setTextAlign(Paint.Align.LEFT);
 
             boolean hasIndex = false;
             boolean hasStock = false;
@@ -464,7 +631,7 @@ public class StockWallpaperService extends WallpaperService {
 
             float plotLeft = cardX + (hasIndex ? dp(40) : pad);
             float plotRight = cardX + cardW - (hasStock ? dp(44) : pad);
-            float plotTop = rowBase + dp(8);
+            float plotTop = legendBase + legendRows * rowHeight + dp(4);
             float plotBottom = chartBottom - dp(18);
 
             if (snapshot.isEmpty()) {
@@ -526,28 +693,26 @@ public class StockWallpaperService extends WallpaperService {
                 }
             }
 
-            // 折线
+            // 折线：横轴按「累计交易分钟」铺开（09:30 -> 0，15:00 -> 240），
+            // 午休被折叠，抽样不均或数据有缺口也不会把曲线挤在一侧
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeJoin(Paint.Join.ROUND);
             paint.setStrokeWidth(dp(1.3f));
-            Card timeRef = null;
+            float plotWidth = plotRight - plotLeft;
             for (int i = 0; i < snapshot.size(); i += 1) {
                 Card card = snapshot.get(i);
                 if (card.points.size() < 2) continue;
-                if (timeRef == null || card.points.size() > timeRef.points.size()) {
-                    timeRef = card;
-                }
 
                 double[] range = "index".equals(card.kind) ? indexRange : stockRange;
                 if (range == null) range = seriesRange(card);
 
-                float step = (plotRight - plotLeft) / (card.points.size() - 1);
                 Path path = new Path();
                 float lastX = plotLeft;
                 float lastY = plotBottom;
                 for (int j = 0; j < card.points.size(); j += 1) {
                     Point point = card.points.get(j);
-                    float x = plotLeft + step * j;
+                    float x = plotLeft + plotWidth
+                            * (float) (tradingMinutes(point.ts) / (double) SESSION_MINUTES);
                     float y = plotBottom
                             - (float) ((point.price - range[0]) / (range[1] - range[0]))
                             * (plotBottom - plotTop);
@@ -563,25 +728,16 @@ public class StockWallpaperService extends WallpaperService {
                 canvas.drawCircle(lastX, lastY, dp(2.2f), paint);
             }
 
-            // 底部时间刻度
-            if (timeRef != null && timeRef.points.size() >= 2) {
-                int count = timeRef.points.size();
-                int[] indexes = {0, count / 3, (count * 2) / 3, count - 1};
-                long previous = -1;
-                paint.setStyle(Paint.Style.FILL);
-                paint.setTextSize(dp(8));
-                paint.setColor(0xFF64748B);
-                for (int index : indexes) {
-                    if (index == previous) continue;
-                    previous = index;
-                    Point point = timeRef.points.get(index);
-                    float x = plotLeft + (plotRight - plotLeft) * index / (count - 1f);
-                    paint.setTextAlign(Paint.Align.CENTER);
-                    float textX = Math.max(plotLeft + dp(12),
-                            Math.min(plotRight - dp(12), x));
-                    canvas.drawText(pointFormat.format(new Date(point.ts)),
-                            textX, plotBottom + dp(12), paint);
-                }
+            // 底部时间刻度：固定 09:30 / 10:30 / 11:30 / 14:00 / 15:00
+            paint.setStyle(Paint.Style.FILL);
+            paint.setTextSize(dp(8));
+            paint.setColor(0xFF64748B);
+            paint.setTextAlign(Paint.Align.CENTER);
+            int[] ticks = {0, 60, 120, 180, 240};
+            for (int minutes : ticks) {
+                float x = plotLeft + plotWidth * minutes / (float) SESSION_MINUTES;
+                float textX = Math.max(plotLeft + dp(12), Math.min(plotRight - dp(12), x));
+                canvas.drawText(clockText(minutes), textX, plotBottom + dp(12), paint);
             }
         }
 

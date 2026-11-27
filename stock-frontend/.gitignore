@@ -1,0 +1,27 @@
+# ---------- Node / Electron ----------
+desktop/node_modules/
+desktop/dist/
+mobile/node_modules/
+mobile/www/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- Android 构建产物 ----------
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+*.apk
+*.aab
+
+# ---------- 工具与系统 ----------
+.screenshots/
+.trae-html-share-packages/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

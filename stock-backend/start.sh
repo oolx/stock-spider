@@ -11,7 +11,7 @@
 #
 # 可选环境变量：
 #   ENV_NAME=python-stock   conda 环境名
-#   HOST=127.0.0.1          监听地址
+#   HOST=0.0.0.0          监听地址
 #   PORT=8000               监听端口
 #   PYTHON=/path/to/python  直接指定解释器
 # ============================================================
@@ -21,7 +21,7 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
 ENV_NAME="${ENV_NAME:-python-stock}"
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 PID_FILE="$APP_DIR/run/app.pid"
 LOG_FILE="$APP_DIR/logs/app.log"
@@ -34,6 +34,8 @@ resolve_python() {
   fi
 
   local candidates=()
+  # deploy.sh 创建的虚拟环境优先
+  candidates+=("$APP_DIR/.venv/bin/python")
   if [ -n "${CONDA_PREFIX:-}" ]; then
     candidates+=("$CONDA_PREFIX/bin/python")
   fi
@@ -100,6 +102,18 @@ start_app() {
     return 1
   fi
 
+  # 端口占用检查：restart 时旧进程可能还没完全释放端口，先等待几秒
+  local i
+  for i in $(seq 1 10); do
+    port_ready "$py" || break
+    sleep 0.5
+  done
+  if port_ready "$py"; then
+    echo "[错误] 端口 $PORT 已被其他程序占用，无法启动。"
+    echo "       请先停止占用该端口的程序（例如旧版后端），或改用其他端口：PORT=8010 $0 start"
+    return 1
+  fi
+
   mkdir -p "$APP_DIR/logs" "$APP_DIR/run" "$APP_DIR/data"
 
   echo "[信息] 使用解释器：$py"
@@ -108,7 +122,6 @@ start_app() {
   nohup "$py" -m uvicorn backend.main:app --host "$HOST" --port "$PORT" >> "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
 
-  local i
   for i in $(seq 1 30); do
     if ! is_running; then
       echo "[错误] 服务启动失败，日志：$LOG_FILE"

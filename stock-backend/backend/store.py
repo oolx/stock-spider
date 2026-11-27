@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .config import DB_PATH, MAX_POINTS
+from .config import DB_PATH, MAX_POINTS, TRADING_RANGES
 
 _SCHEMA = (
     """
@@ -40,6 +40,7 @@ _SCHEMA = (
     CREATE TABLE IF NOT EXISTS ticks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         symbol_id TEXT NOT NULL,
+        day TEXT,
         payload TEXT NOT NULL
     )
     """,
@@ -75,6 +76,24 @@ def _normalize(item: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def _tick_day(ts: Any) -> str:
+    """tick 时间戳（毫秒）对应的本地日期，格式 YYYY-MM-DD。"""
+    try:
+        return datetime.fromtimestamp(float(ts) / 1000).strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _in_trading_time(ts: Any) -> bool:
+    """判断 tick 是否在交易时段内，用于剔除收盘后重复的静止行情点。"""
+    try:
+        moment = datetime.fromtimestamp(float(ts) / 1000)
+    except (TypeError, ValueError):
+        return False
+    minutes = moment.hour * 60 + moment.minute
+    return any(start <= minutes <= end for start, end in TRADING_RANGES)
+
+
 class TickStore:
     """行情数据的 SQLite 读写层。
 
@@ -108,16 +127,29 @@ class TickStore:
         return [_normalize(row) for row in rows]
 
     async def push_tick(self, tick: Dict[str, Any]) -> None:
-        """写入一个 tick，并把该标的裁剪为最近 MAX_POINTS 个点。"""
+        """写入一个 tick；跨交易日时先清掉更早的行情，再裁剪到 MAX_POINTS。"""
         payload = json.dumps(tick, ensure_ascii=False)
-        await self._run(self._push_tick_sync, tick["id"], payload)
+        await self._run(self._push_tick_sync, tick["id"], payload, _tick_day(tick.get("ts")))
 
-    async def get_history(self, symbol_id: str, limit: int) -> List[Dict[str, Any]]:
-        """读取最近 limit 个点，返回时间正序（旧 -> 新）。"""
+    async def get_history(self, symbol_id: str, limit: int, step: int = 1,
+                          day: str = "") -> List[Dict[str, Any]]:
+        """读取最近 limit 个点（step>1 时等间隔抽样），返回时间正序（旧 -> 新）。
+
+        ``day``（YYYY-MM-DD）用于只返回某个交易日的行情，避免不同日期的点
+        混进同一张走势图；过滤后仍按 ``step`` 抽样、``limit`` 截断。
+        同时剔除收盘后（15:00 之后）重复的静止价格点。
+        """
         limit = max(1, min(int(limit), MAX_POINTS))
-        rows = await self._run(self._get_history_sync, symbol_id, limit)
+        step = max(1, int(step))
+        payloads = await self._run(self._get_history_sync, symbol_id)
+        ticks = [json.loads(payload) for payload in payloads]
+        if day:
+            ticks = [tick for tick in ticks
+                     if _tick_day(tick.get("ts")) == day and _in_trading_time(tick.get("ts"))]
+        ticks = ticks[::step][:limit]
         # 查询按新 -> 旧，反转后便于前端直接追加
-        return [json.loads(row) for row in reversed(rows)]
+        ticks.reverse()
+        return ticks
 
     async def close(self) -> None:
         """SQLite 每次操作独立连接，这里无需额外清理。"""
@@ -163,7 +195,23 @@ class TickStore:
         try:
             for statement in _SCHEMA:
                 conn.execute(statement)
+            # 旧库升级：补充 day 列（交易日），并按 payload 里的 ts 回填
+            columns = [row["name"] for row in conn.execute("PRAGMA table_info(ticks)")]
+            if "day" not in columns:
+                conn.execute("ALTER TABLE ticks ADD COLUMN day TEXT")
             conn.commit()
+            missing = conn.execute(
+                "SELECT id, payload FROM ticks WHERE day IS NULL").fetchall()
+            if missing:
+                updates = []
+                for row in missing:
+                    try:
+                        day = _tick_day(json.loads(row["payload"]).get("ts"))
+                    except ValueError:
+                        day = ""
+                    updates.append((day, row["id"]))
+                with conn:
+                    conn.executemany("UPDATE ticks SET day = ? WHERE id = ?", updates)
         finally:
             conn.close()
 
@@ -216,13 +264,18 @@ class TickStore:
         finally:
             conn.close()
 
-    def _push_tick_sync(self, symbol_id: str, payload: str) -> None:
+    def _push_tick_sync(self, symbol_id: str, payload: str, day: str) -> None:
         conn = self._connect()
         try:
             with conn:
                 conn.execute(
-                    "INSERT INTO ticks (symbol_id, payload) VALUES (?, ?)",
-                    (symbol_id, payload),
+                    "INSERT INTO ticks (symbol_id, day, payload) VALUES (?, ?, ?)",
+                    (symbol_id, day, payload),
+                )
+                # 每天开盘初始化：新交易日不再保留更早的行情
+                conn.execute(
+                    "DELETE FROM ticks WHERE symbol_id = ? AND (day IS NULL OR day < ?)",
+                    (symbol_id, day),
                 )
                 # 只保留最近 MAX_POINTS 条
                 conn.execute(
@@ -233,12 +286,13 @@ class TickStore:
         finally:
             conn.close()
 
-    def _get_history_sync(self, symbol_id: str, limit: int) -> List[str]:
+    def _get_history_sync(self, symbol_id: str) -> List[str]:
+        """取出该标的保留的全部行情（新 -> 旧），过滤与抽样在调用方完成。"""
         conn = self._connect()
         try:
             rows = conn.execute(
                 "SELECT payload FROM ticks WHERE symbol_id = ? ORDER BY id DESC LIMIT ?",
-                (symbol_id, limit),
+                (symbol_id, MAX_POINTS),
             ).fetchall()
             return [row["payload"] for row in rows]
         finally:

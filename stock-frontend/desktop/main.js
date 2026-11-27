@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 
-// 后端由 Python 环境单独启动（./start.sh start），桌面端只负责连接
+// 后端是独立部署的 stock-backend 服务，桌面端只负责连接
 const BACKEND_URL = process.env.STOCK_BACKEND_URL || 'http://127.0.0.1:8000';
 const WINDOW_WIDTH = 380;
 const WINDOW_HEIGHT = 540;
@@ -77,7 +77,7 @@ async function ensureBackend() {
       type: 'warning',
       title: '后端未启动',
       message: '无法连接 Python 后端服务',
-      detail: '请先在项目目录执行：\n./start.sh start\n\n服务地址：' + BACKEND_URL,
+      detail: '请先启动后端服务（stock-backend），或在「实时连接」中填写后端地址。\n\n当前地址：' + BACKEND_URL,
       buttons: ['重试', '稍后'],
       defaultId: 0,
       cancelId: 1,

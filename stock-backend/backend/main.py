@@ -540,11 +540,13 @@ async def get_history(
     request: Request,
     id: str = Query(..., description="标的 id，如 index:000001 / stock:600026"),
     limit: int = Query(500, ge=1, le=2000, description="返回的点数，上限受 MAX_POINTS 限制"),
+    step: int = Query(1, ge=1, le=300, description="抽样间隔，step=10 表示每 10 个点取 1 个"),
+    day: str = Query("", description="只返回该交易日（YYYY-MM-DD）的行情，留空表示不限日期"),
 ):
-    """返回某个标的最近 limit 个 tick（时间正序）。"""
+    """返回某个标的最近 limit 个 tick（时间正序）；step 可用于覆盖更长时段。"""
     if ":" not in id:
         raise HTTPException(status_code=400, detail="id 格式应为 kind:symbol")
-    items = await request.app.state.store.get_history(id, limit)
+    items = await request.app.state.store.get_history(id, limit, step, day.strip())
     return {"id": id, "items": items}
 
 
